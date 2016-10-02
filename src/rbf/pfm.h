@@ -5,6 +5,8 @@ typedef unsigned PageNum;
 typedef int RC;
 typedef char byte;
 
+typedef unsigned short ushort;
+
 #define PAGE_SIZE 4096
 
 #include <string>
@@ -44,19 +46,20 @@ private:
 	static PagedFileManager *_pf_manager;
 };
 
-const int FILE_HEADER_SIZE = sizeof(uint);
+const int FILE_HEADER_SIZE = sizeof(unsigned);
 
 class FileHandle
 {
 private:
 	friend class PagedFileManager;
 
-	fstream file;
+	fstream fs;
 
-	uint offset(int pageNum);
+	unsigned pageOffset(int pageNum);
 
 public:
-	uint pages;
+	unsigned pages;
+
 	bool opened;
 
 	// variables to keep the counter for each operation

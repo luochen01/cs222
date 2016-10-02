@@ -34,7 +34,7 @@ RC PagedFileManager::createFile(const string &fileName)
 	//create an empty file here
 	ofstream os;
 	os.open(FILE_DIR + fileName, ios::binary);
-	os << (uint) 0;
+	write(os, (unsigned) 0);
 	os.close();
 
 	return 0;
@@ -65,27 +65,27 @@ RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle)
 	if (fileHandle.opened)
 	{
 		cerr << "Fail to open file: " << fileName
-				<< ", because the fileHandle is already bound to other file!" << endl;
+				<< ", because the fileHandle is already bounded to other file!" << endl;
 		return -1;
 	}
 	fileHandle.opened = true;
-	fileHandle.file.open(FILE_DIR + fileName, ios::in | ios::out | ios::binary);
-	fileHandle.file >> fileHandle.pages;
+	fileHandle.fs.open(FILE_DIR + fileName, ios::in | ios::out | ios::binary | ios::ate);
+	fileHandle.fs.seekg(0);
+	read(fileHandle.fs, fileHandle.pages);
 	return 0;
 }
 
 RC PagedFileManager::closeFile(FileHandle &fileHandle)
 {
-//TODO flush pages into disks
-	if (fileHandle.opened)
+	if (!fileHandle.opened)
 	{
-		cerr << "Fail to close file, because the fileHandle is not opened before!";
+		cerr << "Fail to close file, because the fileHandle is not opened before!" << endl;
 		return -1;
 	}
 	fileHandle.opened = false;
 	fileHandle.pages = 0;
-	fileHandle.file.flush();
-	fileHandle.file.close();
+	fileHandle.fs.flush();
+	fileHandle.fs.close();
 	return 0;
 }
 
@@ -97,6 +97,7 @@ FileHandle::FileHandle() :
 
 FileHandle::~FileHandle()
 {
+
 }
 
 RC FileHandle::readPage(PageNum pageNum, void *data)
@@ -107,8 +108,7 @@ RC FileHandle::readPage(PageNum pageNum, void *data)
 		return -1;
 	}
 
-	file.seekg(offset(pageNum));
-	file.read((char *) data, PAGE_SIZE);
+	read(fs, pageOffset(pageNum), data, PAGE_SIZE);
 
 	readPageCounter++;
 	return 0;
@@ -122,8 +122,9 @@ RC FileHandle::writePage(PageNum pageNum, const void *data)
 				<< endl;
 		return -1;
 	}
-	file.seekp(offset(pageNum));
-	file.write((char *) data, PAGE_SIZE);
+
+	write(fs, pageOffset(pageNum), data, PAGE_SIZE);
+	fs.flush();
 
 	writePageCounter++;
 	return 0;
@@ -132,11 +133,12 @@ RC FileHandle::writePage(PageNum pageNum, const void *data)
 RC FileHandle::appendPage(const void *data)
 {
 	pages++;
-	file.seekp(0);
-	write(file, pages);
 
-	file.seekp(offset(pages - 1));
-	file.write((char*) data, PAGE_SIZE);
+	write(fs, (unsigned) 0, pages);
+
+	write(fs, pageOffset(pages - 1), data, PAGE_SIZE);
+
+	fs.flush();
 
 	appendPageCounter++;
 	return 0;
@@ -157,7 +159,7 @@ RC FileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePage
 	return 0;
 }
 
-uint FileHandle::offset(int pageNum)
+unsigned FileHandle::pageOffset(int pageNum)
 {
 	return FILE_HEADER_SIZE + pageNum * PAGE_SIZE;
 }

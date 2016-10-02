@@ -7,47 +7,82 @@
 
 #include "util.h"
 
+void write(ostream& os, const void * data, unsigned size)
+{
+	os.write((byte*) data, size);
+}
+
+void read(istream& is, void * data, unsigned size)
+{
+	is.read((byte*) data, size);
+}
+
+void write(ostream& os, unsigned offset, const void * data, unsigned dataOffset, unsigned size)
+{
+	os.seekp(offset);
+	os.write((byte*) data + dataOffset, size);
+
+}
+
+void read(istream& is, unsigned offset, void * data, unsigned dataOffset, unsigned size)
+{
+	is.seekg(offset);
+	is.read((byte*) data + dataOffset, size);
+}
+
+void write(ostream& os, unsigned offset, const void * data, unsigned size)
+{
+	write(os, offset, data, 0, size);
+}
+
+void read(istream& is, unsigned offset, void * data, unsigned size)
+{
+	read(is, offset, data, 0, size);
+}
+
 string readString(istream& is)
 {
-	uint size;
-	is >> size;
+	unsigned length;
+	read(is, length);
 
-	char* buffer = new char[size];
-	is.read(buffer, size);
-	string str(buffer, buffer + size);
+	char* buffer = new char[length];
+	read(is, buffer, length);
+	string str(buffer, buffer + length);
 	delete[] buffer;
 	return str;
 }
 
 void writeString(ostream& os, const string& str)
 {
-	os << (uint) str.size();
+	write(os, (ushort) str.size());
 	os.write(str.c_str(), str.size());
 }
 
-string readString(void * data, int offset)
+string readString(void * data, unsigned offset)
 {
-	uint size = read<uint>(data, offset);
-	offset += sizeof(uint);
+	ushort size;
+	read(data, size, offset);
+	offset += sizeof(ushort);
 
 	char* buffer = new char[size];
-	memcpy(buffer, (uchar *) data + offset, size);
+	memcpy(buffer, (byte *) data + offset, size);
 	string str(buffer, buffer + size);
 	delete[] buffer;
 	return str;
 }
 
-void writeString(void * data, const string& value, int offset)
+void writeString(void * data, const string& value, unsigned offset)
 {
-	write(data, (uint) value.size(), offset);
-	offset += sizeof(uint);
+	write(data, (ushort) value.size(), offset);
+	offset += sizeof(ushort);
 
-	memcpy((uchar*) data + offset, value.c_str(), value.size());
+	memcpy((byte*) data + offset, value.c_str(), value.size());
 }
 
-void writeBuffer(void * to, uint toOffset, void * from, uint fromOffset, uint size)
+void writeBuffer(void * to, unsigned toOffset, const void * from, unsigned fromOffset,
+		unsigned size)
 {
-	memcpy((uchar *) to + toOffset, (uchar*) from + fromOffset, size);
+	memcpy((byte *) to + toOffset, (byte*) from + fromOffset, size);
 }
 
 bool exists(const string& fileName)
@@ -59,28 +94,43 @@ bool exists(const string& fileName)
 		return false;
 }
 
-void setBit(uchar& byte, bool value, int offset)
+void setBit(byte& src, bool value, unsigned offset)
 {
 	if (value)
 	{
-		byte |= 1 << offset;
+		src |= 1 << offset;
 	}
 	else
 	{
-		byte &= ~(1 << offset);
+		src &= ~(1 << offset);
 	}
 }
 
-bool readBit(uchar byte, int offset)
+bool readBit(byte src, unsigned offset)
 {
-	return (byte >> offset) & 1;
+	return (src >> offset) & 1;
 }
 
-void getByteOffset(uint pos, uint& byte, uint& offset)
+void setAttrNull(void * src, ushort attrNum, bool isNull)
 {
-	byte = pos / 8;
+	unsigned bytes = 0;
+	unsigned pos = 0;
+	getByteOffset(attrNum, bytes, pos);
+	setBit(*((byte *) src + bytes), isNull, pos);
+}
 
-	//TODO check it's the left part
+bool isAttrNull(const void * src, ushort attrNum)
+{
+	unsigned bytes = 0;
+	unsigned pos = 0;
+	getByteOffset(attrNum, bytes, pos);
+	return readBit(*((byte *) src + bytes), pos);
+}
+
+void getByteOffset(unsigned pos, unsigned& bytes, unsigned& offset)
+{
+	bytes = pos / 8;
+
 	offset = 7 - pos % 8;
 }
 
