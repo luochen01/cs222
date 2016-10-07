@@ -32,77 +32,9 @@ struct Attribute
 	AttrLength length; // attribute length
 };
 
-// Comparison Operator (NOT needed for part 1 of the project)
-typedef enum
-{
-	EQ_OP = 0, // no condition// =
-	LT_OP,      // <
-	LE_OP,      // <=
-	GT_OP,      // >
-	GE_OP,      // >=
-	NE_OP,      // !=
-	NO_OP       // no condition
-} CompOp;
-
-/********************************************************************************
- The scan iterator is NOT required to be implemented for the part 1 of the project
- ********************************************************************************/
-
-# define RBFM_EOF (-1)  // end of a scan operator
-
-// RBFM_ScanIterator is an iterator to go through records
-// The way to use it is like the following:
-//  RBFM_ScanIterator rbfmScanIterator;
-//  rbfm.open(..., rbfmScanIterator);
-//  while (rbfmScanIterator(rid, data) != RBFM_EOF) {
-//    process the data;
-//  }
-//  rbfmScanIterator.close();
-
-class RBFM_ScanIterator
-{
-public:
-	RBFM_ScanIterator()
-	{
-	}
-	;
-	~RBFM_ScanIterator()
-	{
-	}
-	;
-
-	// Never keep the results in the memory. When getNextRecord() is called,
-	// a satisfying record needs to be fetched from the file.
-	// "data" follows the same format as RecordBasedFileManager::insertRecord().
-	RC getNextRecord(RID &rid, void *data)
-	{
-		return RBFM_EOF;
-	}
-	;
-	RC close()
-	{
-		return -1;
-	}
-	;
-};
-
-class RecordSlot
-{
-public:
-	ushort offset;
-	ushort size;
-};
-
-const int RECORD_SLOT_SIZE = sizeof(ushort) * 2;
-
-const int RECORD_PAGE_HEADER_SIZE = sizeof(ushort) * 2;
-
 class RecordBasedFileManager;
 
 class RecordPage;
-
-
-
 
 /**
  * I used an offset-table based format to store each record. Specially, a record with N fields is stored as follows:
@@ -123,107 +55,187 @@ class RecordPage;
 class Record
 {
 private:
-	friend class RecordPage;
+	byte * data;
 
-	void * data;
+	const vector<Attribute> * pRecordDescriptor;
 
-	const ushort RECORD_HEADER_LENGTH;
-
-	ushort attrStartOffset(ushort attrNum);
-
-	ushort attrEndOffset(ushort attrNum);
-
-	void attrEndOffset(ushort attrNum, ushort offset)
-	{
-		write(data, offset, attrNum * sizeof(ushort));
-	}
-
-	bool isAttrNull(ushort attrNum)
-	{
-		return attrSize(attrNum) == 0;
-	}
-
-	ushort readAttr(ushort attrNum, const Attribute& attrDescriptor, void * dest,
-			ushort destOffset);
-
-	ushort insertAttr(ushort attrNum, const Attribute& attrDescriptor, const void * src,
-			ushort srcOffset);
-
-	ushort attrSize(ushort attrNum);
+	ushort recordSize;
 
 public:
-	Record(void * buffer, ushort attributes);
+	Record();
 
 	~Record();
 
-	static ushort RecordSize(const vector<Attribute>& recordDescriptor, const void * data);
+	ushort getRecordSize()
+	{
+		return recordSize;
+	}
 
-	void readRecord(const vector<Attribute>& recordDescriptor, void * dest);
+	void reset(void * data, const vector<Attribute>& recordDescriptor, ushort recordSize);
 
-	void insertRecord(const vector<Attribute>& recordDescriptor, const void * src);
+	ushort recordHeaderSize();
 
+	ushort attributeStartOffset(ushort attrNum);
+
+	ushort attributeEndOffset(ushort attrNum);
+
+	void attributeEndOffset(ushort attrNum, ushort offset);
+
+	bool isAttributeNull(ushort attrNum);
+
+	ushort attributeSize(ushort attrNum);
+
+	void * attribute(ushort attrNum);
+
+	void insertAttribute(ushort attrNum, ushort size);
 };
+
+const ushort RECORD_SLOT_SIZE = sizeof(ushort) * 2;
+
+class RecordSlot
+{
+public:
+	ushort offset;
+	ushort size;
+};
+
+const ushort RECORD_PAGE_HEADER_SIZE = sizeof(ushort) * 2;
 
 class RecordPage
 {
 private:
-	friend class RecordBasedFileManager;
+	byte * data;
 
 	const FileHandle* pFileHandle;
 
 	unsigned pageNum;
 
-	void * data;
+public:
 
-//simple primitives to operate a record page.
-//warning: integrity checks are performed by callers.
+	void * getData()
+	{
+		return data;
+	}
+
+	bool samePage(unsigned pageNum, FileHandle& fileHandle);
+
 	void readRecordSlot(ushort slotNum, RecordSlot& slot);
 
 	void writeRecordSlot(ushort slotNum, const RecordSlot& slot);
 
 	void appendRecordSlot(const RecordSlot& slot);
 
-	void readRecord(const RecordSlot& slot, const vector<Attribute> &recordDescriptor, void * data);
+	void readRecord(const RecordSlot& slot, const vector<Attribute>& recordDescriptor,
+			Record& record);
 
-	ushort insertRecord(const vector<Attribute>& recordDescritor, const void * data,
-			ushort recordSize);
+	void insertRecord(const vector<Attribute>& recordDescriptor, Record& record, ushort recordSize,
+			unsigned& slotNum);
 
 	ushort locateRecordSlot();
 
-	void flush();
+	ushort slotEnd();
 
-	int slotEnd()
-	{
-		return RECORD_PAGE_HEADER_SIZE + RECORD_SLOT_SIZE * slotSize;
-	}
-
-	int slotOffset(int slotNum)
-	{
-		return RECORD_PAGE_HEADER_SIZE + RECORD_SLOT_SIZE * slotNum;
-	}
+	ushort slotOffset(ushort slotNum);
 
 	ushort emptySpace();
 
-public:
-	ushort recordStart;
-	ushort slotSize;
+	ushort recordStart();
+
+	void recordStart(ushort value);
+
+	ushort slotSize();
+
+	void slotSize(ushort value);
 
 	RecordPage();
 
 	~RecordPage();
 
-	void reset(void * data, const FileHandle& fileHandle, unsigned pageNum);
+	RC readPage(FileHandle& fileHandle, unsigned pageNum);
+
+	void reset(void * data, FileHandle& fileHandle, unsigned pageNum);
+
+};
+
+// Comparison Operator (NOT needed for part 1 of the project)
+typedef enum
+{
+	EQ_OP = 0,	// =
+	LT_OP,	// <
+	LE_OP,	// <=
+	GT_OP,	// >
+	GE_OP,	// >=
+	NE_OP,	// !=
+	NO_OP	// no condition
+} CompOp;
+
+/********************************************************************************
+ The scan iterator is NOT required to be implemented for the part 1 of the project
+ ********************************************************************************/
+
+# define RBFM_EOF (-1)  // end of a scan operator
+
+// RBFM_ScanIterator is an iterator to go through records
+// The way to use it is like the following:
+//  RBFM_ScanIterator rbfmScanIterator;
+//  rbfm.open(..., rbfmScanIterator);
+//  while (rbfmScanIterator(rid, data) != RBFM_EOF) {
+//    process the data;
+//  }
+//  rbfmScanIterator.close();
+
+class RBFM_ScanIterator
+{
+private:
+	friend class RecordBasedFileManager;
+
+	byte * buffer;
+	RecordPage curPage;
+	unsigned curPageNum;
+	ushort curSlotNum;
+	FileHandle* pFileHandle;
+
+	vector<Attribute>* pRecordDescriptor;
+	unsigned conditionNum;
+	vector<unsigned> projectNums;
+	CompOp compOp;
+	void *conditionValue;
+
+	bool end;
+
+	void init();
+
+	void readNextPage();
+
+	RC getNextRecord(Record& record);
+
+	RC getNextRecordWithinPage(Record& record);
+
+	bool select(void *conditionData, void *conditionValue, CompOp compOp,
+			const Attribute& attributeDescriptor);
+
+	bool selectInt(void * left, void * right, CompOp compOp);
+
+	bool selectReal(void * left, void * right, CompOp compOp);
+public:
+	RBFM_ScanIterator();
+
+	~RBFM_ScanIterator();
+
+// Never keep the results in the memory. When getNextRecord() is called,
+// a satisfying record needs to be fetched from the file.
+// "data" follows the same format as RecordBasedFileManager::insertRecord().
+	RC getNextRecord(RID &rid, void *data);
+
+	RC close();
 };
 
 class RecordBasedFileManager
 {
 private:
-
-	static const bool deleteEnabled = false;
+	byte * data;
 
 	RecordPage curPage;
-
-	byte * pageBuffer;
 
 	RC locatePage(ushort recordSize, FileHandle& fileHandle, RID& rid);
 
@@ -231,6 +243,8 @@ private:
 
 public:
 	static RecordBasedFileManager* instance();
+
+	static ushort RecordSize(const vector<Attribute>& recordDescriptor, const void * src);
 
 	RC createFile(const string &fileName);
 
@@ -286,8 +300,6 @@ public:
 			const void *value,                    // used in the comparison
 			const vector<string> &attributeNames, // a list of projected attributes
 			RBFM_ScanIterator &rbfm_ScanIterator);
-
-public:
 
 protected:
 	RecordBasedFileManager();

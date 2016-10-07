@@ -111,6 +111,78 @@ int RBFTest_Lc1(RecordBasedFileManager *rbfm)
 
 	cout << endl;
 
+	cout << endl << "Inserting Data:" << endl;
+	rbfm->printRecord(recordDescriptor, record);
+
+	rc = rbfm->insertRecord(fileHandle, recordDescriptor, record, rid);
+	assert(rc == success && "Inserting a record should not fail.");
+
+	// Given the rid, read the record from file
+	rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
+	assert(rc == success && "Reading a record should not fail.");
+
+	cout << endl << "Returned Data:" << endl;
+	rbfm->printRecord(recordDescriptor, returnedData);
+
+	// Compare whether the two memory blocks are the same
+	if (memcmp(record, returnedData, recordSize) != 0)
+	{
+		cout << "[FAIL] Test Case LC1 Failed!" << endl << endl;
+		free(record);
+		free(returnedData);
+		return -1;
+	}
+
+	cout << endl;
+
+	cout << endl << "Inserting Data:" << endl;
+	rbfm->printRecord(recordDescriptor, record);
+
+	rc = rbfm->insertRecord(fileHandle, recordDescriptor, record, rid);
+	assert(rc == success && "Inserting a record should not fail.");
+
+	// Given the rid, read the record from file
+	rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
+	assert(rc == success && "Reading a record should not fail.");
+
+	cout << endl << "Returned Data:" << endl;
+	rbfm->printRecord(recordDescriptor, returnedData);
+
+	// Compare whether the two memory blocks are the same
+	if (memcmp(record, returnedData, recordSize) != 0)
+	{
+		cout << "[FAIL] Test Case LC1 Failed!" << endl << endl;
+		free(record);
+		free(returnedData);
+		return -1;
+	}
+
+	cout << endl;
+
+	cout << endl << "Inserting Data:" << endl;
+	rbfm->printRecord(recordDescriptor, record);
+
+	rc = rbfm->insertRecord(fileHandle, recordDescriptor, record, rid);
+	assert(rc == success && "Inserting a record should not fail.");
+
+	// Given the rid, read the record from file
+	rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
+	assert(rc == success && "Reading a record should not fail.");
+
+	cout << endl << "Returned Data:" << endl;
+	rbfm->printRecord(recordDescriptor, returnedData);
+
+	// Compare whether the two memory blocks are the same
+	if (memcmp(record, returnedData, recordSize) != 0)
+	{
+		cout << "[FAIL] Test Case LC1 Failed!" << endl << endl;
+		free(record);
+		free(returnedData);
+		return -1;
+	}
+
+	cout << endl;
+
 	// Close the file "testlc1"
 	rc = rbfm->closeFile(fileHandle);
 	assert(rc == success && "Closing the file should not fail.");

@@ -27,14 +27,15 @@ RC PagedFileManager::createFile(const string &fileName)
 {
 	if (exists(fileName))
 	{
-		cerr << "Fail to create file:" << fileName << ", because it already exists!" << endl;
+		logError("Fail to create file:" + fileName + ", because it already exists!")
 		return -1;
 	}
 
 	//create an empty file here
 	ofstream os;
-	os.open(FILE_DIR + fileName, ios::binary);
+	os.open(fileName, ios::binary);
 	write(os, (unsigned) 0);
+	os.flush();
 	os.close();
 
 	return 0;
@@ -44,7 +45,7 @@ RC PagedFileManager::destroyFile(const string &fileName)
 {
 	if (!exists(fileName))
 	{
-		cerr << "Fail to destroy file:" << fileName << ", because it does not exist!" << endl;
+		logError("Fail to destroy file:" + fileName + ", because it does not exist!");
 		return -1;
 	}
 
@@ -58,18 +59,17 @@ RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle)
 {
 	if (!exists(fileName))
 	{
-		cerr << "Fail to open file: " << fileName << ", because it does not exist!" << endl;
+		logError("Fail to open file: " + fileName + ", because it does not exist!");
 		return -1;
 	}
 
 	if (fileHandle.opened)
 	{
-		cerr << "Fail to open file: " << fileName
-				<< ", because the fileHandle is already bounded to other file!" << endl;
+		logError("Fail to open file: " + fileName + ", because the fileHandle is already bounded to other file!");
 		return -1;
 	}
 	fileHandle.opened = true;
-	fileHandle.fs.open(FILE_DIR + fileName, ios::in | ios::out | ios::binary | ios::ate);
+	fileHandle.fs.open(fileName, ios::in | ios::out | ios::binary | ios::ate);
 	fileHandle.fs.seekg(0);
 	read(fileHandle.fs, fileHandle.pages);
 	return 0;
@@ -79,7 +79,8 @@ RC PagedFileManager::closeFile(FileHandle &fileHandle)
 {
 	if (!fileHandle.opened)
 	{
-		cerr << "Fail to close file, because the fileHandle is not opened before!" << endl;
+
+		logError("Fail to close file, because the fileHandle is not opened before!");
 		return -1;
 	}
 	fileHandle.opened = false;
@@ -104,7 +105,7 @@ RC FileHandle::readPage(PageNum pageNum, void *data)
 {
 	if (pageNum >= pages)
 	{
-		cerr << "Fail to read page: " << pageNum << ", because it not a valid page number!" << endl;
+		logError("Fail to read page: "+pageNum+", because it not a valid page number!");
 		return -1;
 	}
 
@@ -118,8 +119,7 @@ RC FileHandle::writePage(PageNum pageNum, const void *data)
 {
 	if (pageNum >= pages)
 	{
-		cerr << "Fail to write page: " << pageNum << ", because it not a valid page number!"
-				<< endl;
+		logError("Fail to write page: " + pageNum + ", because it not a valid page number!");
 		return -1;
 	}
 
@@ -133,9 +133,7 @@ RC FileHandle::writePage(PageNum pageNum, const void *data)
 RC FileHandle::appendPage(const void *data)
 {
 	pages++;
-
 	write(fs, (unsigned) 0, pages);
-
 	write(fs, pageOffset(pages - 1), data, PAGE_SIZE);
 
 	fs.flush();

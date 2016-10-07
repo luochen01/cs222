@@ -6,8 +6,8 @@
 
 RecordBasedFileManager* RecordBasedFileManager::_rbf_manager = 0;
 
-Record::Record(void * _data, ushort _attributes) :
-		data(_data), RECORD_HEADER_LENGTH((_attributes) * sizeof(ushort))
+Record::Record() :
+		data(NULL), pRecordDescriptor(0), recordSize(0)
 {
 
 }
@@ -17,176 +17,93 @@ Record::~Record()
 
 }
 
-ushort Record::attrStartOffset(ushort attrNum)
+void Record::reset(void * data, const vector<Attribute>& recordDescriptor, ushort recordSize)
+{
+	this->data = (byte *) data;
+	this->pRecordDescriptor = &recordDescriptor;
+	this->recordSize = recordSize;
+}
+
+ushort Record::recordHeaderSize()
+{
+	return pRecordDescriptor->size() * sizeof(ushort);
+}
+
+void Record::attributeEndOffset(ushort attrNum, ushort offset)
+{
+	write(data, offset, attrNum * sizeof(ushort));
+}
+
+bool Record::isAttributeNull(ushort attrNum)
+{
+	return attributeSize(attrNum) == 0;
+}
+
+ushort Record::attributeStartOffset(ushort attrNum)
 {
 	if (attrNum == 0)
 	{
-		return RECORD_HEADER_LENGTH;
+		return recordHeaderSize();
 	}
 	else
 	{
-		return attrEndOffset(attrNum - 1);
+		return attributeEndOffset(attrNum - 1);
 	}
 
 }
 
-ushort Record::attrEndOffset(ushort attrNum)
+ushort Record::attributeEndOffset(ushort attrNum)
 {
 	ushort offset;
 	read(data, offset, attrNum * sizeof(ushort));
 	return offset;
 }
 
-ushort Record::attrSize(ushort attrNum)
+ushort Record::attributeSize(ushort attrNum)
 {
-	return attrEndOffset(attrNum) - attrStartOffset(attrNum);
+	return attributeEndOffset(attrNum) - attributeStartOffset(attrNum);
 
 }
 
-ushort Record::readAttr(ushort attrNum, const Attribute& attr, void * dest, ushort destOffset)
+void* Record::attribute(ushort attrNum)
 {
-	if (isAttrNull(attrNum))
+	if (isAttributeNull(attrNum))
 	{
-		return 0;
+		return NULL;
 	}
-	ushort startOffset = attrStartOffset(attrNum);
-	switch (attr.type)
-	{
-	case TypeInt:
-	case TypeReal:
-		writeBuffer(dest, destOffset, data, startOffset, attr.length);
-		return attr.length;
-	case TypeVarChar:
-	{
-		ushort size = 0;
-		read(data, size, startOffset);
-		write(dest, (unsigned) size, destOffset, 4);
-		writeBuffer(dest, destOffset + 4, data, startOffset + sizeof(ushort), size);
-		return 4 + size;
-	}
-	}
-	return 0;
+	ushort startOffset = attributeStartOffset(attrNum);
 
-}
-ushort Record::insertAttr(ushort attrNum, const Attribute& attr, const void * src, ushort srcOffset)
-{
-	ushort startOffset = attrStartOffset(attrNum);
-
-	if (::isAttrNull(src, attrNum))
-	{
-		attrEndOffset(attrNum, attrStartOffset(attrNum));
-		return 0;
-	}
-
-	switch (attr.type)
-	{
-	case TypeInt:
-	case TypeReal:
-		writeBuffer(data, startOffset, src, srcOffset, attr.length);
-		attrEndOffset(attrNum, startOffset + 4);
-		return 4;
-	case TypeVarChar:
-	{
-		unsigned size;
-		read(src, size, srcOffset, 4);
-
-		//write byte content
-		write(data, (ushort) size, startOffset);
-		writeBuffer(data, startOffset + sizeof(ushort), src, srcOffset + 4, size);
-		attrEndOffset(attrNum, startOffset + size + sizeof(ushort));
-		return size + 4;
-	}
-	}
-	return 0;
+	return this->data + startOffset;
 }
 
-ushort Record::RecordSize(const vector<Attribute>& recordDescriptor, const void * src)
+void Record::insertAttribute(ushort attrNum, ushort size)
 {
-	ushort size = (recordDescriptor.size() + 1) * sizeof(ushort);
-	ushort srcOffset = ceil((double) recordDescriptor.size() / 8);
-	for (int i = 0; i < recordDescriptor.size(); i++)
-	{
-		if (::isAttrNull(src, i))
-		{
-			continue;
-		}
-		const Attribute& attr = recordDescriptor[i];
-		switch (attr.type)
-		{
-		case TypeInt:
-		case TypeReal:
-			size += attr.length;
-			srcOffset += attr.length;
-			break;
-		case TypeVarChar:
-		{
-			unsigned varSize;
-			read(src, varSize, srcOffset, 4);
-			size = size + varSize + sizeof(ushort);
-			srcOffset = srcOffset + varSize + 4;
-			break;
-		}
+	ushort startOffset = attributeStartOffset(attrNum);
 
-		}
-	}
-	return size;
-
-}
-
-void Record::readRecord(const vector<Attribute>& recordDescriptor, void * dest)
-{
-	ushort recordOffset = ceil((double) recordDescriptor.size() / 8);
-
-	for (int i = 0; i < recordDescriptor.size(); i++)
-	{
-		const Attribute& attr = recordDescriptor[i];
-
-		if (isAttrNull(i))
-		{
-			setAttrNull(dest, i, true);
-		}
-		else
-		{
-			ushort bytesRead = readAttr(i, attr, dest, recordOffset);
-			recordOffset += bytesRead;
-			setAttrNull(dest, i, false);
-
-		}
-	}
-
-}
-
-void Record::insertRecord(const vector<Attribute>& recordDescriptor, const void * src)
-{
-	ushort recordOffset = ceil((double) recordDescriptor.size() / 8);
-	for (int i = 0; i < recordDescriptor.size(); i++)
-	{
-		const Attribute& attr = recordDescriptor[i];
-		ushort bytesWrite = insertAttr(i, attr, src, recordOffset);
-		recordOffset += bytesWrite;
-	}
-
+	attributeEndOffset(attrNum, startOffset + size);
 }
 
 RecordPage::RecordPage() :
-		data(NULL), recordStart(0), pFileHandle(NULL), pageNum(0), slotSize(0)
+		pFileHandle(NULL), pageNum(0)
 {
-
+	data = new byte[PAGE_SIZE];
 }
 
 RecordPage::~RecordPage()
 {
-
+	delete[] data;
 }
 
-void RecordPage::reset(void * data, const FileHandle& fileHandle, unsigned pageNum)
+void RecordPage::reset(void * data, FileHandle& fileHandle, unsigned pageNum)
 {
-	this->data = data;
+	this->data = (byte *) data;
 	this->pFileHandle = &fileHandle;
 	this->pageNum = pageNum;
+}
 
-	read(this->data, recordStart, 0);
-	read(this->data, slotSize, sizeof(ushort));
+bool RecordPage::samePage(unsigned pageNum, FileHandle& fileHandle)
+{
+	return this->pageNum == pageNum && this->pFileHandle == &fileHandle;
 }
 
 void RecordPage::readRecordSlot(ushort slotNum, RecordSlot& slot)
@@ -210,14 +127,15 @@ void RecordPage::appendRecordSlot(const RecordSlot& slot)
 	ushort offset = slotEnd();
 	write(data, slot.offset, offset);
 	write(data, slot.size, offset + sizeof(ushort));
-	slotSize++;
+	slotSize(slotSize() + 1);
 }
 
 ushort RecordPage::locateRecordSlot()
 {
 
 	RecordSlot tmp;
-	for (int i = 0; i < slotSize; i++)
+	ushort size = slotSize();
+	for (int i = 0; i < size; i++)
 	{
 		readRecordSlot(i, tmp);
 		if (tmp.offset == 0)
@@ -227,47 +145,288 @@ ushort RecordPage::locateRecordSlot()
 	}
 
 //create a new slot
-	return slotSize++;
+	ushort i = size++;
+	slotSize(size);
+	return i;
 }
 
-void RecordPage::readRecord(const RecordSlot& slot, const vector<Attribute> &recordDescriptor,
-		void * dest)
+ushort RecordPage::slotEnd()
 {
-	Record record((byte*) this->data + slot.offset, recordDescriptor.size());
-	record.readRecord(recordDescriptor, dest);
+	return RECORD_PAGE_HEADER_SIZE + RECORD_SLOT_SIZE * slotSize();
 }
 
-ushort RecordPage::insertRecord(const vector<Attribute>& recordDescriptor, const void * src,
-		ushort recordSize)
+ushort RecordPage::slotOffset(ushort slotNum)
+{
+	return RECORD_PAGE_HEADER_SIZE + RECORD_SLOT_SIZE * slotNum;
+}
+
+void RecordPage::readRecord(const RecordSlot& slot, const vector<Attribute>& recordDescriptor,
+		Record& record)
+{
+	record.reset(this->data + slot.offset, recordDescriptor, slot.size);
+
+}
+
+void RecordPage::insertRecord(const vector<Attribute>& recordDescriptor, Record& record,
+		ushort recordSize, unsigned& slotNum)
 {
 	//try to locate a proper slot
-	ushort slotNum = locateRecordSlot();
+	slotNum = locateRecordSlot();
 	RecordSlot slot;
-	slot.offset = recordStart - recordSize;
+	slot.offset = recordStart() - recordSize;
 	slot.size = recordSize;
 	writeRecordSlot(slotNum, slot);
 
-	Record record((byte*) this->data + slot.offset, recordDescriptor.size());
-	record.insertRecord(recordDescriptor, src);
+	record.reset(this->data + slot.offset, recordDescriptor, recordSize);
 
-	recordStart -= recordSize;
-
-	return slotNum;
-}
-
-void RecordPage::flush()
-{
-	write(data, recordStart, 0);
-	write(data, slotSize, sizeof(ushort));
+	recordStart(slot.offset);
 
 }
 
 ushort RecordPage::emptySpace()
 {
-	return recordStart - slotEnd();
+	return recordStart() - slotEnd();
 }
 
-RecordBasedFileManager* RecordBasedFileManager::instance()
+ushort RecordPage::recordStart()
+{
+	ushort value;
+	read(this->data, value, 0);
+	return value;
+}
+
+void RecordPage::recordStart(ushort value)
+{
+	write(this->data, value, 0);
+}
+
+ushort RecordPage::slotSize()
+{
+	ushort value;
+	read(this->data, value, sizeof(ushort));
+	return value;
+}
+
+void RecordPage::slotSize(ushort value)
+{
+	write(this->data, value, sizeof(ushort));
+}
+
+RBFM_ScanIterator::RBFM_ScanIterator()
+{
+	buffer = NULL;
+	curPageNum = -1;
+	curSlotNum = -1;
+	end = false;
+
+	pFileHandle = NULL;
+	compOp = EQ_OP;
+	conditionValue = NULL;
+	conditionNum = 0;
+	pRecordDescriptor = NULL;
+
+}
+RBFM_ScanIterator::~RBFM_ScanIterator()
+{
+	if (buffer)
+	{
+		delete[] buffer;
+		buffer = NULL;
+	}
+	pFileHandle = NULL;
+	conditionValue = NULL;
+	end = false;
+}
+
+void RBFM_ScanIterator::init()
+{
+	if (buffer == NULL)
+	{
+		buffer = new byte[PAGE_SIZE];
+	}
+
+	curPageNum = -1;
+	curSlotNum = -1;
+	end = false;
+
+	readNextPage();
+}
+
+void RBFM_ScanIterator::readNextPage()
+{
+	if (curPage.readPage(*pFileHandle, ++curPageNum) == 0)
+	{
+		curSlotNum = -1;
+	}
+	else
+	{
+		end = true;
+	}
+}
+
+RC RBFM_ScanIterator::getNextRecordWithinPage(Record& record)
+{
+	if (end)
+	{
+		return -1;
+	}
+	RecordSlot slot;
+	while (++curSlotNum < curPage.slotSize())
+	{
+		curPage.readRecordSlot(curSlotNum, slot);
+		if (slot.offset != 0)
+		{
+			curPage.readRecord(slot, *pRecordDescriptor, record);
+			return 0;
+		}
+
+	}
+	return -1;
+}
+
+bool RBFM_ScanIterator::select(void *conditionData, void *conditionValue, CompOp compOp,
+		const Attribute& attributeDescriptor)
+{
+	switch (attributeDescriptor.type)
+	{
+	case TypeInt:
+		selectInt(conditionData, conditionValue, compOp);
+		break;
+	case TypeReal:
+		selectReal(conditionData, conditionValue, compOp);
+		break;
+	}
+
+	return compOp == NO_OP;
+}
+
+bool RBFM_ScanIterator::selectInt(void *conditionData, void *conditionValue, CompOp compOp)
+{
+//might be null
+	int left = conditionData != NULL ? *(int *) conditionData : 0;
+	int right = conditionValue != NULL ? *(int *) conditionValue : 0;
+
+	switch (compOp)
+	{
+	case EQ_OP:	// =
+		return (conditionData == NULL && conditionValue == NULL)
+				|| (conditionData != NULL && conditionValue != NULL && left == right);
+	case LT_OP:
+		return conditionData != NULL && conditionValue != NULL && left < right;
+	case LE_OP:
+		return conditionData != NULL && conditionValue != NULL && left <= right;
+	case GT_OP:
+		return conditionData != NULL && conditionValue != NULL && left > right;
+	case GE_OP:
+		return conditionData != NULL && conditionValue != NULL && left >= right;
+	case NE_OP:
+		return (conditionData == NULL && conditionValue != NULL)
+				|| (conditionData != NULL && conditionValue != NULL) || left != right;
+	case NO_OP:
+		return true;
+	}
+
+	return false;
+}
+
+bool RBFM_ScanIterator::selectReal(void *conditionData, void *conditionValue, CompOp compOp)
+{
+	float left = conditionData != NULL ? *(float *) conditionData : 0.0f;
+	float right = conditionValue != NULL ? *(float *) conditionValue : 0.0f;
+
+	switch (compOp)
+	{
+	case EQ_OP:	// =
+		return (conditionData == NULL && conditionValue == NULL)
+				|| (conditionData != NULL && conditionValue != NULL && equals(left, right));
+	case LT_OP:
+		return conditionData != NULL && conditionValue != NULL && left < right;
+	case LE_OP:
+		return conditionData != NULL && conditionValue != NULL && left <= right;
+	case GT_OP:
+		return conditionData != NULL && conditionValue != NULL && left > right;
+	case GE_OP:
+		return conditionData != NULL && conditionValue != NULL && left >= right;
+	case NE_OP:
+		return (conditionData == NULL && conditionValue != NULL)
+				|| (conditionData != NULL && conditionValue != NULL) || !equals(left, right);
+	case NO_OP:
+		return true;
+	}
+	return false;
+}
+// Never keep the results in the memory. When getNextRecord() is called,
+// a satisfying record needs to be fetched from the file.
+// "data" follows the same format as RecordBasedFileManager::insertRecord().
+RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
+{
+	if (end)
+	{
+		return RBFM_EOF;
+	}
+
+	Record record;
+	while (getNextRecord(record) == 0)
+	{
+		//check this record
+		void *conditionData = record.attribute(conditionNum);
+
+		if (!select(conditionData, conditionValue, compOp, (*pRecordDescriptor)[conditionNum]))
+		{
+			continue;
+		}
+
+		ushort recordOffset = ceil((double) projectNums.size() / 8);
+		//project data
+		for (int i = 0; i < projectNums.size(); i++)
+		{
+			int num = projectNums[i];
+			void * attributeData = record.attribute(num);
+			if (num == NULL)
+			{
+				setAttrNull(data, num, true);
+			}
+			else
+			{
+				setAttrNull(data, num, false);
+				recordOffset += copyAttributeData(data, recordOffset, (*pRecordDescriptor)[num],
+						attributeData, 0);
+			}
+		}
+
+		return 0;
+	}
+
+	end = true;
+
+	return RBFM_EOF;
+}
+RC RBFM_ScanIterator::close()
+{
+	if (buffer)
+	{
+		delete[] buffer;
+		buffer = NULL;
+	}
+
+	return -1;
+}
+
+RC RecordBasedFileManager::readPage(unsigned pageNum, FileHandle& fileHandle)
+{
+	if (curPage.samePage(pageNum, fileHandle))
+	{
+		return 0;
+	}
+	if (fileHandle.readPage(pageNum, data) != 0)
+	{
+		return -1;
+	}
+	curPage.reset(data, fileHandle, pageNum);
+	return 0;
+}
+
+RecordBasedFileManager * RecordBasedFileManager::instance()
 {
 	if (!_rbf_manager)
 		_rbf_manager = new RecordBasedFileManager();
@@ -277,12 +436,12 @@ RecordBasedFileManager* RecordBasedFileManager::instance()
 
 RecordBasedFileManager::RecordBasedFileManager()
 {
-	pageBuffer = new byte[PAGE_SIZE];
+	data = new byte[PAGE_SIZE];
 }
 
 RecordBasedFileManager::~RecordBasedFileManager()
 {
-	delete[] pageBuffer;
+	delete[] data;
 }
 
 RC RecordBasedFileManager::createFile(const string &fileName)
@@ -301,7 +460,7 @@ RC RecordBasedFileManager::openFile(const string &fileName, FileHandle &fileHand
 
 }
 
-RC RecordBasedFileManager::closeFile(FileHandle &fileHandle)
+RC RecordBasedFileManager::closeFile(FileHandle & fileHandle)
 {
 	return PagedFileManager::instance()->closeFile(fileHandle);
 }
@@ -309,35 +468,52 @@ RC RecordBasedFileManager::closeFile(FileHandle &fileHandle)
 RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor, const void *data, RID &rid)
 {
-	ushort recordSize = Record::RecordSize(recordDescriptor, data);
+	ushort recordSize = RecordSize(recordDescriptor, data);
 
-	//locate a suitable page
+//locate a suitable page
 	locatePage(recordSize, fileHandle, rid);
 
-	//we have a good page now
+//we have a good page now
 
-	rid.slotNum = curPage.insertRecord(recordDescriptor, data, recordSize);
+	Record record;
 
-	//finish append record
-	curPage.flush();
-	fileHandle.writePage(rid.pageNum, curPage.data);
+	curPage.insertRecord(recordDescriptor, record, recordSize, rid.slotNum);
 
+//parse input data, and insert into record
+	ushort recordOffset = ceil((double) recordDescriptor.size() / 8);
+
+	for (int i = 0; i < recordDescriptor.size(); i++)
+	{
+		const Attribute& attr = recordDescriptor[i];
+		int attributeSize = 0;
+		if (!::isAttrNull(data, i))
+		{
+			void * attrData = record.attribute(i);
+			attributeSize = copyAttributeData(attrData, 0, attr, data, recordOffset);
+
+		}
+		record.insertAttribute(i, attributeSize);
+		recordOffset += attributeSize;
+
+	}
+
+//finish append record
+	fileHandle.writePage(rid.pageNum, curPage.getData());
 	return 0;
 }
 
 RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 		const vector<Attribute> &recordDescriptor, const RID &rid, void *data)
 {
-
 	if (readPage(rid.pageNum, fileHandle) != 0)
 	{
 		return -1;
 	}
 
-	if (rid.slotNum >= curPage.slotSize)
+	if (rid.slotNum >= curPage.slotSize())
 	{
 		//check slot size
-		cerr << "Fail to read record, because " << rid.slotNum << " is not a valid slot number!";
+		logError("Fail to read record, because " + rid.slotNum +" is not a valid slot number!");
 		return -1;
 	}
 
@@ -346,11 +522,109 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 	if (slot.offset == 0)
 	{
 		//check slot exists
-		cerr << "Fail to read record, because " << rid.slotNum << " is not a valid slot number!";
+		logError("Fail to read record, because " + rid.slotNum + " is not a valid slot number!");
 		return -1;
 	}
 
-	curPage.readRecord(slot, recordDescriptor, data);
+	Record record;
+	curPage.readRecord(slot, recordDescriptor, record);
+
+	ushort recordOffset = ceil((double) recordDescriptor.size() / 8);
+
+	for (int i = 0; i < recordDescriptor.size(); i++)
+	{
+		if (record.isAttributeNull(i))
+		{
+			setAttrNull(data, i, true);
+		}
+		else
+		{
+			setAttrNull(data, i, false);
+			void* attrData = record.attribute(i);
+			const Attribute& attribute = recordDescriptor[i];
+
+			recordOffset += copyAttributeData(data, recordOffset, attribute, attrData, 0);
+		}
+
+	}
+	return 0;
+
+}
+
+RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor, const RID &rid)
+{
+	return 0;
+}
+
+// Assume the RID does not change after an update
+RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor, const void *data, const RID &rid)
+{
+
+	return 0;
+}
+
+RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
+		const vector<Attribute> &recordDescriptor, const RID &rid, const string &attributeName,
+		void *data)
+{
+
+	if (readPage(rid.pageNum, fileHandle) != 0)
+	{
+		return -1;
+	}
+
+	if (rid.slotNum >= curPage.slotSize())
+	{
+		//check slot size
+		logError("Fail to read record attribute, because " + rid.slotNum +" is not a valid slot number!");
+		return -1;
+	}
+
+	RecordSlot slot;
+	curPage.readRecordSlot(rid.slotNum, slot);
+
+	if (slot.offset == 0)
+	{
+		//check slot exists
+		logError("Fail to read record attribute, because " + rid.slotNum + " is not a valid slot number!");
+		return -1;
+	}
+
+	Record record;
+	curPage.readRecord(slot, recordDescriptor, record);
+
+	int index = attributeIndex(recordDescriptor, attributeName);
+	void * attrData = record.attribute(index);
+
+	copyAttributeData(data, (ushort) 0, recordDescriptor[index], attrData, (ushort) 0);
+	return 0;
+
+}
+
+// Scan returns an iterator to allow the caller to go through the results one by one.
+RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> &recordDescriptor,
+		const string &conditionAttribute, const CompOp compOp, // comparision type such as "<" and "="
+		const void *value, // used in the comparison
+		const vector<string> &attributeNames, // a list of projected attributes
+		RBFM_ScanIterator &rbfm_ScanIterator)
+{
+	rbfm_ScanIterator.compOp = compOp;
+	rbfm_ScanIterator.conditionNum = attributeIndex(recordDescriptor, conditionAttribute);
+	rbfm_ScanIterator.conditionValue = value;
+
+	rbfm_ScanIterator.pFileHandle = &fileHandle;
+	rbfm_ScanIterator.pRecordDescriptor = &recordDescriptor;
+	rbfm_ScanIterator.projectNums.clear();
+	for (string name : attributeNames)
+	{
+		rbfm_ScanIterator.projectNums.push_back(attributeIndex(recordDescriptor, name));
+	}
+
+	sort(rbfm_ScanIterator.projectNums.begin(), rbfm_ScanIterator.projectNums.end());
+
+	rbfm_ScanIterator.init();
 	return 0;
 }
 
@@ -411,20 +685,6 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> & recordDescripto
 
 }
 
-RC RecordBasedFileManager::readPage(unsigned pageNum, FileHandle& fileHandle)
-{
-	if (curPage.pFileHandle == &fileHandle && curPage.pageNum == pageNum)
-	{
-		return 0;
-	}
-	RC rc = fileHandle.readPage(pageNum, pageBuffer);
-	if (!rc)
-	{
-		curPage.reset(pageBuffer, fileHandle, pageNum);
-	}
-	return rc;
-}
-
 RC RecordBasedFileManager::locatePage(ushort recordSize, FileHandle& fileHandle, RID& rid)
 {
 	if (fileHandle.pages > 0)
@@ -437,30 +697,61 @@ RC RecordBasedFileManager::locatePage(ushort recordSize, FileHandle& fileHandle,
 			return 0;
 		}
 
-		if (deleteEnabled)
+		//go through all the pages
+		for (int i = 0; i < fileHandle.pages - 1; i++)
 		{
-			//go through all the pages
-			for (int i = 0; i < fileHandle.pages - 1; i++)
+			readPage(i, fileHandle);
+			if (curPage.emptySpace() > recordSize + RECORD_SLOT_SIZE)
 			{
-				readPage(i, fileHandle);
-				if (curPage.emptySpace() > recordSize + RECORD_SLOT_SIZE)
-				{
-					rid.pageNum = i;
-					return 0;
-				}
+				rid.pageNum = i;
+				return 0;
 			}
 		}
 
 	}
 
-	//we need to create a new page
-	memset(pageBuffer, 0, PAGE_SIZE);
-	curPage.reset(pageBuffer, fileHandle, fileHandle.pages);
-	curPage.recordStart = PAGE_SIZE;
-	curPage.flush();
-	fileHandle.appendPage(pageBuffer);
+//we need to create a new page
+	memset(data, 0, PAGE_SIZE);
+	curPage.reset(data, fileHandle, fileHandle.pages);
+	rid.pageNum = fileHandle.pages;
 
-	rid.pageNum = curPage.pageNum;
+	curPage.recordStart(PAGE_SIZE);
+	fileHandle.appendPage(data);
+
 	return 0;
 }
 
+ushort RecordBasedFileManager::RecordSize(const vector<Attribute>& recordDescriptor,
+		const void * src)
+{
+
+	ushort size = (recordDescriptor.size()) * sizeof(ushort);
+	ushort srcOffset = ceil((double) recordDescriptor.size() / 8);
+	for (int i = 0; i < recordDescriptor.size(); i++)
+	{
+		if (::isAttrNull(src, i))
+		{
+			continue;
+		}
+		const Attribute& attr = recordDescriptor[i];
+		switch (attr.type)
+		{
+		case TypeInt:
+		case TypeReal:
+			size += attr.length;
+			srcOffset += attr.length;
+			break;
+		case TypeVarChar:
+		{
+			unsigned varSize;
+			read(src, varSize, srcOffset, 4);
+			size = size + varSize + 4;
+			srcOffset = srcOffset + varSize + 4;
+			break;
+		}
+
+		}
+	}
+	return size;
+
+}

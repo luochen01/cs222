@@ -11,9 +11,17 @@
 #include <cstring>
 #include <istream>
 #include <sys/stat.h>
+
 #include"pfm.h"
+#include "rbfm.h"
 
 using namespace std;
+
+#ifdef LOG_ENABLED
+#define logError(msg) cerr<<msg<<endl
+#else
+#define logError(msg)
+#endif
 
 template<typename T> void read(istream& is, T& value)
 {
@@ -58,12 +66,10 @@ template<typename T> void read(const void * data, T& result, unsigned offset, un
 	memcpy(&result, ((byte*) data + offset), size);
 }
 
-
 template<typename T> void write(void * data, const T& value, unsigned offset, unsigned size)
 {
 	memcpy((byte*) data + offset, &value, size);
 }
-
 
 template<typename T> void read(const void * data, T& value, unsigned offset)
 {
@@ -93,5 +99,14 @@ void getByteOffset(unsigned pos, unsigned& byteNum, unsigned& offset);
 void setAttrNull(void * data, ushort attrNum, bool isNull);
 
 bool isAttrNull(const void * data, ushort attrNum);
+
+struct Attribute;
+
+int attributeIndex(const vector<Attribute>& recordDescriptor, const string& attributeName);
+
+bool equals(float left, float right);
+
+ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute, const void * from,
+		ushort fromOffset);
 
 #endif /* RBF_UTIL_H_ */

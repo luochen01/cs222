@@ -15,10 +15,6 @@ typedef unsigned short ushort;
 #include <map>
 using namespace std;
 
-const string META_PATH = ".meta_file";
-
-const string FILE_DIR = "./";
-
 class FileHandle;
 
 class PagedFileManager

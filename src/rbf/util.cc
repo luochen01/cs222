@@ -5,6 +5,8 @@
  *      Author: luochen
  */
 
+#include<math.h>
+
 #include "util.h"
 
 void write(ostream& os, const void * data, unsigned size)
@@ -132,5 +134,42 @@ void getByteOffset(unsigned pos, unsigned& bytes, unsigned& offset)
 	bytes = pos / 8;
 
 	offset = 7 - pos % 8;
+}
+
+int attributeIndex(const vector<Attribute>& recordDescriptor, const string& attributeName)
+{
+	for (int i = 0; i < recordDescriptor.size(); i++)
+	{
+		if (recordDescriptor[i].name == attributeName)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+bool equals(float left, float right)
+{
+	return fabs(left - right) < numeric_limits<float>::epsilon();
+}
+
+ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute, const void * from,
+		ushort fromOffset)
+{
+	switch (attribute.type)
+	{
+	case TypeInt:
+	case TypeReal:
+		writeBuffer(to, toOffset, from, fromOffset, attribute.length);
+		return attribute.length;
+	case TypeVarChar:
+	{
+		unsigned size;
+		read(from, size, fromOffset, 4);
+		writeBuffer(to, toOffset, from, fromOffset, 4 + size);
+		return 4 + size;
+	}
+	}
+	return 0;
 }
 

@@ -14,11 +14,11 @@ I used an offset-table based format to store each record. Specially, a record wi
 offset1, offset2, ..., offsetN, field1, field2, ..., fieldN
 
 An offset table containing N offsets (each takes 2 bytes) is placed at the beginning of the record, where the ith offset indicates the end offset of the ith field. Thus, the start offset of the ith field is simply the end address of the previous field, i.e., offset i-1. In particular, for the first field, its start offset is just the end offset of the offset table, i.e., offset0 = N * 2.
-If a field is NULL, then its corresponding end offset is just set as its start offset.
+A field is NULL iff its end offset equals to its start offset.
 
-To access the ith field, one first needs to access the i-1th and ith item in the offset table (note offset0 can be implicitly computed) to get the start and end offset of that field. Then, the ith field can be retrieved by accessing record data between offseti-1 and offseti. Note if offseti-1 equals to offseti, which indicates the field is NULL, then the memory read operation can be simply skipped.
+To access the ith field, one first needs to access the i-1th and ith item in the offset table (note offset0 can be implicitly computed) to get the start and end offset of that field. Then, the ith field can be retrieved by accessing the record data between offset i-1 and offset i. Note if offset i-1 equals to offset i, which indicates the field is NULL, then the memory read operation can be simply skipped.
 
-Given a VarChar field with size N, its size N is stored in 2 bytes, followed by the actual N bytes of the field.
+Given a VarChar field with size N, I first store size N in 2 bytes, followed by the actual N bytes of the field.
 
 
 3. Page Format
@@ -26,16 +26,16 @@ Given a VarChar field with size N, its size N is stored in 2 bytes, followed by 
 
 The format of each page is as follows:
 
-recordStartOffset, slotSize, slot1, slot2, ..., slot n,  ..., free space, ..., recordn, ..., record1
+recordStartOffset, slotSize, slot1, slot2, ..., slot n,  ..., free space, ..., record n, ..., record1
 
-The first two variables, each takes 2 bytes, store metadata about this page. Variable recordStartoffset stores the offset where the record space starts, and variable slotSize stores the size of the record slot table. After these two variables comes the record slot table. Each record slot contains two variables, which are offset and size, and each takes 2 bytes. Offset stores the start offset of the corresponding record, while size stores the size of that record. The records are stored at the end of the page, and grow in the reverse direction. The free space is between the record table and the record space, and it is used up when the end of the slot table meets the start of the record space.
+The first two variables, each takes 2 bytes, store metadata about this page. Variable recordStartOffset stores the offset where the record space starts, and variable slotSize stores the size of the record slot table. After these two variables comes the record slot table. Each record slot contains two variables, which are offset and size, and each takes 2 bytes. Offset stores the start offset of the corresponding record, while size stores the size of that record. The records are stored at the end of the page, and grow in the reverse direction. The free space is between the record table and the record space, and it is used up when the end of the slot table meets the start of the record space.
 
 
 The organization of all pages in a file is as follows:
 
 numPages, page1, ..., pageN
 
-The file header only contains a variable numPages, which takes 4 bytes and stores the number of pages in the file. The pages are then stored after the file header. To locate the ith page, one can simply calculate its start address as 4 + PAGE_SIZE * i, where PAGE_SIZE is 4096. For simplicity, the metadata of each page, such as the available space, is not stored in the current implementation, since no deletion is performed on the page. However, this may be extended in the future implementation.
+The file header only contains a variable numPages, which takes 4 bytes and stores the number of pages in the file. The pages are then stored after the file header. To locate the ith page, one can simply calculate its start address as 4 + PAGE_SIZE * i, where PAGE_SIZE is 4096. For simplicity, the metadata of each page, such as the available space, is not stored in the current implementation. Thus, it may check all existing pages when inserting a new record. However, this would be refined in the future implementation.
 
 
 4. Implementation Detail
