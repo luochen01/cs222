@@ -254,14 +254,32 @@ void RBFM_ScanIterator::init()
 
 void RBFM_ScanIterator::readNextPage()
 {
-	if (curPage.readPage(*pFileHandle, ++curPageNum) == 0)
+	if (pFileHandle->readPage(++curPageNum, buffer) == 0)
 	{
 		curSlotNum = -1;
+		curPage.reset(buffer, *pFileHandle, curPageNum);
 	}
 	else
 	{
 		end = true;
 	}
+}
+
+RC RBFM_ScanIterator::getNextRecord(Record& record)
+{
+	if (end)
+	{
+		return -1;
+	}
+	while (curPageNum < pFileHandle->pages && !end)
+	{
+		if (getNextRecordWithinPage(record) == 0)
+		{
+			return 0;
+		}
+		readNextPage();
+	}
+	return -1;
 }
 
 RC RBFM_ScanIterator::getNextRecordWithinPage(Record& record)
@@ -284,7 +302,7 @@ RC RBFM_ScanIterator::getNextRecordWithinPage(Record& record)
 	return -1;
 }
 
-bool RBFM_ScanIterator::select(void *conditionData, void *conditionValue, CompOp compOp,
+bool RBFM_ScanIterator::select(const void *conditionData, const void *conditionValue, CompOp compOp,
 		const Attribute& attributeDescriptor)
 {
 	switch (attributeDescriptor.type)
@@ -295,12 +313,14 @@ bool RBFM_ScanIterator::select(void *conditionData, void *conditionValue, CompOp
 	case TypeReal:
 		selectReal(conditionData, conditionValue, compOp);
 		break;
+	default:
+		return compOp == NO_OP;
 	}
 
-	return compOp == NO_OP;
 }
 
-bool RBFM_ScanIterator::selectInt(void *conditionData, void *conditionValue, CompOp compOp)
+bool RBFM_ScanIterator::selectInt(const void *conditionData, const void *conditionValue,
+		CompOp compOp)
 {
 //might be null
 	int left = conditionData != NULL ? *(int *) conditionData : 0;
@@ -329,7 +349,8 @@ bool RBFM_ScanIterator::selectInt(void *conditionData, void *conditionValue, Com
 	return false;
 }
 
-bool RBFM_ScanIterator::selectReal(void *conditionData, void *conditionValue, CompOp compOp)
+bool RBFM_ScanIterator::selectReal(const void *conditionData, const void *conditionValue,
+		CompOp compOp)
 {
 	float left = conditionData != NULL ? *(float *) conditionData : 0.0f;
 	float right = conditionValue != NULL ? *(float *) conditionValue : 0.0f;
@@ -382,7 +403,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 		{
 			int num = projectNums[i];
 			void * attributeData = record.attribute(num);
-			if (num == NULL)
+			if (attributeData == NULL)
 			{
 				setAttrNull(data, num, true);
 			}
@@ -393,7 +414,8 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 						attributeData, 0);
 			}
 		}
-
+		rid.pageNum = curPageNum;
+		rid.slotNum = curSlotNum;
 		return 0;
 	}
 

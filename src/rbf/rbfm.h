@@ -195,11 +195,11 @@ private:
 	ushort curSlotNum;
 	FileHandle* pFileHandle;
 
-	vector<Attribute>* pRecordDescriptor;
+	const vector<Attribute>* pRecordDescriptor;
 	unsigned conditionNum;
 	vector<unsigned> projectNums;
 	CompOp compOp;
-	void *conditionValue;
+	const void *conditionValue;
 
 	bool end;
 
@@ -211,12 +211,12 @@ private:
 
 	RC getNextRecordWithinPage(Record& record);
 
-	bool select(void *conditionData, void *conditionValue, CompOp compOp,
+	bool select(const void *conditionData, const void *conditionValue, CompOp compOp,
 			const Attribute& attributeDescriptor);
 
-	bool selectInt(void * left, void * right, CompOp compOp);
+	bool selectInt(const void * left, const void * right, CompOp compOp);
 
-	bool selectReal(void * left, void * right, CompOp compOp);
+	bool selectReal(const void * left, const void * right, CompOp compOp);
 public:
 	RBFM_ScanIterator();
 
