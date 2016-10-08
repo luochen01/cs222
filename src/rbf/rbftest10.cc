@@ -102,7 +102,7 @@ int RBFTest_10(RecordBasedFileManager *rbfm)
 		rc = rbfm->readRecord(fileHandle, recordDescriptor, rids[i], returnedData);
 		assert(rc == success && "Reading a record should not fail.");
 
-		if (i % 1000 == 0)
+		//if (i % 1000 == 0)
 		{
 			cout << endl << "Returned Data:" << endl;
 			rbfm->printRecord(recordDescriptor, returnedData);

@@ -14,7 +14,7 @@
 
 using namespace std;
 
-int RBFTest_9(RecordBasedFileManager *rbfm, vector<RID> &rids, vector<int> &sizes) {
+int RBFTest_Scan(RecordBasedFileManager *rbfm, vector<RID> &rids, vector<int> &sizes) {
     // Functions tested
     // 1. Create Record-Based File
     // 2. Open Record-Based File
@@ -124,6 +124,6 @@ int main()
 
     vector<RID> rids;
     vector<int> sizes;    
-    RC rcmain = RBFTest_9(rbfm, rids, sizes);
+    RC rcmain = RBFTest_Scan(rbfm, rids, sizes);
     return rcmain;
 }

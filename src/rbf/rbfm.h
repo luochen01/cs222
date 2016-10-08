@@ -101,35 +101,52 @@ public:
 
 const ushort RECORD_PAGE_HEADER_SIZE = sizeof(ushort) * 2;
 
+const ushort OVERFLOW_MARKER_SIZE = sizeof(unsigned) * 2;
+
 class RecordPage
 {
 private:
-	byte * data;
 
 	const FileHandle* pFileHandle;
 
 	unsigned pageNum;
 
+	bool samePage(FileHandle& fileHandle, unsigned pageNum);
+
 public:
 
-	void * getData()
-	{
-		return data;
-	}
+	byte * data;
 
-	bool samePage(unsigned pageNum, FileHandle& fileHandle);
+	void setOverflowRecord(unsigned slotNum, unsigned overflowPageNum, unsigned overflowSlotNum);
+
+	void writeOverflowMarker(RecordSlot& slot, unsigned overflowPageNum, unsigned overflowSlotNum);
+
+	void readOverflowMarker(RecordSlot& slot, unsigned& overflowPageNum, unsigned& overflowSlotNum);
+
+	void increaseSpace(ushort slotNum, ushort offset);
 
 	void readRecordSlot(ushort slotNum, RecordSlot& slot);
 
 	void writeRecordSlot(ushort slotNum, const RecordSlot& slot);
 
+	void deleteRecordSlot(ushort slotNum);
+
+	void markRecordSlot(ushort slotNum);
+
+	void increaseRecordSlot(ushort slotNum, ushort offset);
+
 	void appendRecordSlot(const RecordSlot& slot);
+
+	void deleteRecord(ushort slotNum);
 
 	void readRecord(const RecordSlot& slot, const vector<Attribute>& recordDescriptor,
 			Record& record);
 
 	void insertRecord(const vector<Attribute>& recordDescriptor, Record& record, ushort recordSize,
 			unsigned& slotNum);
+
+	void updateRecord(const vector<Attribute>& recordDescriptor, Record& record,
+			ushort newRecordSize, unsigned slotNum);
 
 	ushort locateRecordSlot();
 
@@ -153,7 +170,11 @@ public:
 
 	RC readPage(FileHandle& fileHandle, unsigned pageNum);
 
-	void reset(void * data, FileHandle& fileHandle, unsigned pageNum);
+	void reset(FileHandle& fileHandle, unsigned pageNum);
+
+	void invalidate(FileHandle& fileHandle, unsigned pageNum);
+
+	void invalidate();
 
 };
 
@@ -189,7 +210,6 @@ class RBFM_ScanIterator
 private:
 	friend class RecordBasedFileManager;
 
-	byte * buffer;
 	RecordPage curPage;
 	unsigned curPageNum;
 	ushort curSlotNum;
@@ -233,13 +253,20 @@ public:
 class RecordBasedFileManager
 {
 private:
-	byte * data;
 
 	RecordPage curPage;
 
-	RC locatePage(ushort recordSize, FileHandle& fileHandle, RID& rid);
+	RecordPage overflowPage;
 
-	RC readPage(unsigned pageNum, FileHandle& fileHandle);
+	unsigned locatePage(RecordPage& page, ushort recordSize, FileHandle& fileHandle);
+
+	void fillRecord(const vector<Attribute>& recordDescriptor, Record& record, const void *data);
+
+	void fillData(const vector<Attribute> & recordDescriptor, Record& record, void * data);
+
+	void updateRecordWithinPage(FileHandle& fileHandle, RecordPage& page,
+			const vector<Attribute>& recordDescriptor, unsigned pageNum, unsigned slotNum,
+			unsigned newRecordSize, const void * data);
 
 public:
 	static RecordBasedFileManager* instance();

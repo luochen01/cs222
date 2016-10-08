@@ -23,10 +23,10 @@ int RBFTest_Delete(RecordBasedFileManager *rbfm)
 	// 4. Read Record
 	// 5. Close Record-Based File
 	// 6. Destroy Record-Based File
-	cout << endl << "***** In RBF Test Case LC 1 *****" << endl;
+	cout << endl << "***** In RBF Test Case Delete *****" << endl;
 
 	RC rc;
-	string fileName = "testlc1";
+	string fileName = "test_delete";
 
 	// Create a file named "testlc1"
 	rc = rbfm->createFile(fileName);
@@ -62,22 +62,6 @@ int RBFTest_Delete(RecordBasedFileManager *rbfm)
 	rc = rbfm->insertRecord(fileHandle, recordDescriptor, record, rid);
 	assert(rc == success && "Inserting a record should not fail.");
 
-	// Given the rid, read the record from file
-	rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
-	assert(rc == success && "Reading a record should not fail.");
-
-	cout << endl << "Returned Data:" << endl;
-	rbfm->printRecord(recordDescriptor, returnedData);
-
-	// Compare whether the two memory blocks are the same
-	if (memcmp(record, returnedData, recordSize) != 0)
-	{
-		cout << "[FAIL] Test Case LC1 Failed!" << endl << endl;
-		free(record);
-		free(returnedData);
-		return -1;
-	}
-
 	cout << endl;
 
 	memset(nullsIndicator, 0, nullFieldsIndicatorActualSize);
@@ -93,23 +77,11 @@ int RBFTest_Delete(RecordBasedFileManager *rbfm)
 	rc = rbfm->insertRecord(fileHandle, recordDescriptor, record, rid);
 	assert(rc == success && "Inserting a record should not fail.");
 
-	// Given the rid, read the record from file
-	rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
-	assert(rc == success && "Reading a record should not fail.");
+	cout << endl << "Inserting Data:" << endl;
+	rbfm->printRecord(recordDescriptor, record);
 
-	cout << endl << "Returned Data:" << endl;
-	rbfm->printRecord(recordDescriptor, returnedData);
-
-	// Compare whether the two memory blocks are the same
-	if (memcmp(record, returnedData, recordSize) != 0)
-	{
-		cout << "[FAIL] Test Case LC1 Failed!" << endl << endl;
-		free(record);
-		free(returnedData);
-		return -1;
-	}
-
-	cout << endl;
+	rc = rbfm->insertRecord(fileHandle, recordDescriptor, record, rid);
+	assert(rc == success && "Inserting a record should not fail.");
 
 	cout << endl << "Inserting Data:" << endl;
 	rbfm->printRecord(recordDescriptor, record);
@@ -117,6 +89,17 @@ int RBFTest_Delete(RecordBasedFileManager *rbfm)
 	rc = rbfm->insertRecord(fileHandle, recordDescriptor, record, rid);
 	assert(rc == success && "Inserting a record should not fail.");
 
+	unsigned slotNum = rid.slotNum;
+	rid.slotNum = 0;
+
+	rc = rbfm->deleteRecord(fileHandle, recordDescriptor, rid);
+	assert(rc == success && "Deleting a record should not fail.");
+
+	rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
+	assert(rc != success && "Reading a deleted record should fail.");
+
+	rid.slotNum = slotNum - 1;
+
 	// Given the rid, read the record from file
 	rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
 	assert(rc == success && "Reading a record should not fail.");
@@ -127,19 +110,15 @@ int RBFTest_Delete(RecordBasedFileManager *rbfm)
 	// Compare whether the two memory blocks are the same
 	if (memcmp(record, returnedData, recordSize) != 0)
 	{
-		cout << "[FAIL] Test Case LC1 Failed!" << endl << endl;
+		cout << "[FAIL] Test Case Delete Failed!" << endl << endl;
 		free(record);
 		free(returnedData);
 		return -1;
 	}
 
-	cout << endl;
-
-	cout << endl << "Inserting Data:" << endl;
-	rbfm->printRecord(recordDescriptor, record);
-
 	rc = rbfm->insertRecord(fileHandle, recordDescriptor, record, rid);
 	assert(rc == success && "Inserting a record should not fail.");
+	assert(rid.slotNum == 0 && "Inserted record should use previous deleted slot.");
 
 	// Given the rid, read the record from file
 	rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
@@ -151,31 +130,7 @@ int RBFTest_Delete(RecordBasedFileManager *rbfm)
 	// Compare whether the two memory blocks are the same
 	if (memcmp(record, returnedData, recordSize) != 0)
 	{
-		cout << "[FAIL] Test Case LC1 Failed!" << endl << endl;
-		free(record);
-		free(returnedData);
-		return -1;
-	}
-
-	cout << endl;
-
-	cout << endl << "Inserting Data:" << endl;
-	rbfm->printRecord(recordDescriptor, record);
-
-	rc = rbfm->insertRecord(fileHandle, recordDescriptor, record, rid);
-	assert(rc == success && "Inserting a record should not fail.");
-
-	// Given the rid, read the record from file
-	rc = rbfm->readRecord(fileHandle, recordDescriptor, rid, returnedData);
-	assert(rc == success && "Reading a record should not fail.");
-
-	cout << endl << "Returned Data:" << endl;
-	rbfm->printRecord(recordDescriptor, returnedData);
-
-	// Compare whether the two memory blocks are the same
-	if (memcmp(record, returnedData, recordSize) != 0)
-	{
-		cout << "[FAIL] Test Case LC1 Failed!" << endl << endl;
+		cout << "[FAIL] Test Case Delete Failed!" << endl << endl;
 		free(record);
 		free(returnedData);
 		return -1;
@@ -197,7 +152,7 @@ int RBFTest_Delete(RecordBasedFileManager *rbfm)
 	free(record);
 	free(returnedData);
 
-	cout << "RBF Test Case LC1 Finished! The result will be examined." << endl << endl;
+	cout << "RBF Test Case Delete Finished! The result will be examined." << endl << endl;
 
 	return 0;
 }
@@ -207,7 +162,7 @@ int main()
 // To test the functionality of the record-based file manager
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 
-	remove("testlc1");
+	remove("test_delete");
 
 	RC rcmain = RBFTest_Delete(rbfm);
 	return rcmain;

@@ -6,6 +6,7 @@
  */
 
 #include<math.h>
+#include<iostream>
 
 #include "util.h"
 
@@ -164,9 +165,11 @@ ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute,
 		return attribute.length;
 	case TypeVarChar:
 	{
-		unsigned size;
-		read(from, size, fromOffset, 4);
-		writeBuffer(to, toOffset, from, fromOffset, 4 + size);
+		int size;
+		read(from, size, fromOffset, sizeof(int));
+		writeBuffer(to, toOffset, from, fromOffset, sizeof(int) + size);
+
+		read(to, size, toOffset, sizeof(int));
 		return 4 + size;
 	}
 	}
