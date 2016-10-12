@@ -8,6 +8,45 @@
 
 RecordBasedFileManager* RecordBasedFileManager::_rbf_manager = 0;
 
+int attributeIndex(const vector<Attribute>& recordDescriptor, const string& attributeName)
+{
+	for (int i = 0; i < recordDescriptor.size(); i++)
+	{
+		if (recordDescriptor[i].name == attributeName)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+bool equals(float left, float right)
+{
+	return fabs(left - right) < numeric_limits<float>::epsilon();
+}
+
+ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute, const void * from,
+		ushort fromOffset)
+{
+	switch (attribute.type)
+	{
+	case TypeInt:
+	case TypeReal:
+		writeBuffer(to, toOffset, from, fromOffset, attribute.length);
+		return attribute.length;
+	case TypeVarChar:
+	{
+		int size;
+		read(from, size, fromOffset, sizeof(int));
+		writeBuffer(to, toOffset, from, fromOffset, sizeof(int) + size);
+
+		read(to, size, toOffset, sizeof(int));
+		return 4 + size;
+	}
+	}
+	return 0;
+}
+
 Record::Record() :
 		data(NULL), pRecordDescriptor(0), recordSize(0)
 {
@@ -924,8 +963,13 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 	int index = attributeIndex(recordDescriptor, attributeName);
 	if (!record.isAttributeNull(index))
 	{
+		setAttrNull(data, 0, false);
 		void * attrData = record.attribute(index);
-		copyAttributeData(data, (ushort) 0, recordDescriptor[index], attrData, (ushort) 0);
+		copyAttributeData(data, (ushort) 1, recordDescriptor[index], attrData, (ushort) 0);
+	}
+	else
+	{
+		setAttrNull(data, 0, true);
 	}
 
 	return 0;

@@ -10,6 +10,15 @@
 
 using namespace std;
 
+struct Attribute;
+
+int attributeIndex(const vector<Attribute>& recordDescriptor, const string& attributeName);
+
+bool equals(float left, float right);
+
+ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute, const void * from,
+		ushort fromOffset);
+
 // Record ID
 typedef struct
 {
