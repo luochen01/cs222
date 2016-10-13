@@ -1,4 +1,15 @@
 .DS_Store
+auto_test.sh
+
+!src/rbf/*.cc
+!src/rbf/*.h
+!src/rbf/makefile
+src/rbf/*
+
+!src/rm/*.cc
+!src/rm/*.h
+!src/rm/makefile
+src/rm/*
 
 # Compiled Object files
 *.slo

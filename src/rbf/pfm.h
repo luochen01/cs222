@@ -10,6 +10,7 @@ typedef unsigned short ushort;
 #define PAGE_SIZE 4096
 
 #include <string>
+#include <cstring>
 #include <fstream>
 #include <climits>
 #include <map>
