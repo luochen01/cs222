@@ -477,7 +477,8 @@ RC RBFM_ScanIterator::getNextRecordWithinPage(Record& record)
 	while (++curSlotNum < curPage.slotSize())
 	{
 		curPage.readRecordSlot(curSlotNum, slot);
-		if (slot.offset != 0)
+		//ensure the record exists, and not a overflow record
+		if (slot.offset != 0 && slot.size != 0)
 		{
 			curPage.readRecord(slot, *pRecordDescriptor, record);
 			return 0;
@@ -572,12 +573,15 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 	Record record;
 	while (getNextRecord(record) == 0)
 	{
-		//check this record
-		void *conditionData = record.attribute(conditionNum);
-
-		if (!select(conditionData, conditionValue, compOp, (*pRecordDescriptor)[conditionNum]))
+		if (compOp != NO_OP)
 		{
-			continue;
+			//check this record
+			void *conditionData = record.attribute(conditionNum);
+
+			if (!select(conditionData, conditionValue, compOp, (*pRecordDescriptor)[conditionNum]))
+			{
+				continue;
+			}
 		}
 
 		ushort recordOffset = ceil((double) projectNums.size() / 8);
