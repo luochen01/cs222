@@ -4,12 +4,55 @@
 
 #include <string>
 #include <vector>
+#include <cstdarg>
+#include <cassert>
 
 #include "../rbf/rbfm.h"
 
 using namespace std;
 
 # define RM_EOF (-1)  // end of a scan operator
+#define TABLES_TABLE  "Tables"
+#define COLUMNS_TABLE  "Columns"
+
+class DatumType {
+public:
+    DatumType()
+        : _isNull(true) {};
+    ~DatumType() {};
+
+    bool isNull() { return _isNull; };
+    void getValue(int &val) { val = _valInt; };
+    void getValue(float &val) { val = _valFloat; };
+    void getValue(string &val) { val = _valString; };
+    void setValue(int val) { _valInt = val; _isNull = false; };
+    void setValue(float val) { _valFloat = val; _isNull = false; };
+    void setValue(string val) { _valString = val; _isNull = false; };
+
+    int _valInt;
+    float _valFloat;
+    string _valString;
+    
+    bool _isNull;
+};
+
+class IntType : public DatumType {
+public:
+    IntType() : DatumType() {};
+    IntType(int val) { _valInt = val; _isNull = false; };
+};
+
+class FloatType : public DatumType {
+public:
+    FloatType() : DatumType() {};
+    FloatType(float val) { _valFloat = val; _isNull = false; };
+};
+
+class StringType : public DatumType {
+public:
+    StringType() : DatumType() {};
+    StringType(string val) { _valString = val; _isNull = false; };
+};
 
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator {
@@ -18,8 +61,17 @@ public:
   ~RM_ScanIterator() {};
 
   // "data" follows the same format as RelationManager::insertTuple()
-  RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
-  RC close() { return -1; };
+  RC getNextTuple(RID &rid, void *data);
+  RC close();
+  RC init(const string &tableName);
+
+private:
+  friend class RelationManager;
+
+  vector<Attribute> attrs;
+  RBFM_ScanIterator rbfmsi;
+  RecordBasedFileManager *rbfm;
+  FileHandle fileHandle;
 };
 
 
@@ -67,7 +119,10 @@ public:
   RC addAttribute(const string &tableName, const Attribute &attr);
 
   RC dropAttribute(const string &tableName, const string &attributeName);
-
+  
+  // hard-coded info
+  vector<Attribute> tableRecordDescriptor;
+  vector<Attribute> columnRecordDescriptor;
 
 protected:
   RelationManager();
@@ -75,6 +130,17 @@ protected:
 
 private:
   static RelationManager *_rm;
+
+  // Added methods
+  void initializeCatalogAttrs();
+  void formatRecord(void *record, int &recordSize, const vector<Attribute> &recordDescriptor, const vector<DatumType *> &attrValues);
+  RC createCatalogTables(const vector<Attribute> &tableAttrs, const vector<Attribute> &columnAttrs);
+  int getLastTableID();
+  RC addTableToCatalog(const string &tableName, const vector<Attribute> &attrs);
+  void parseIteratorData(vector<DatumType *> &parsedData, void *returnedData, const vector<Attribute> &recordDescriptor, const vector<string> &attrNames);
+  bool getBit(unsigned char byte, unsigned pos);
+  void setBit(unsigned char *byte, unsigned pos);
+  void clearBit(unsigned char *byte, unsigned pos);
 };
 
 #endif
