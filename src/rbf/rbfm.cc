@@ -497,6 +497,8 @@ bool RBFM_ScanIterator::select(const void *conditionData, const void *conditionV
 		return selectInt(conditionData, conditionValue, compOp);
 	case TypeReal:
 		return selectReal(conditionData, conditionValue, compOp);
+	case TypeVarChar:
+		return selectVarchar(conditionData, conditionValue, compOp);
 	default:
 		return compOp == NO_OP;
 	}
@@ -506,26 +508,28 @@ bool RBFM_ScanIterator::select(const void *conditionData, const void *conditionV
 bool RBFM_ScanIterator::selectInt(const void *conditionData, const void *conditionValue,
 		CompOp compOp)
 {
+	if (conditionData == NULL || conditionValue == NULL)
+	{
+		return false;
+	}
 //might be null
-	int left = conditionData != NULL ? *(int *) conditionData : 0;
-	int right = conditionValue != NULL ? *(int *) conditionValue : 0;
+	int left = *(int *) conditionData;
+	int right = *(int *) conditionValue;
 
 	switch (compOp)
 	{
 	case EQ_OP:	// =
-		return (conditionData == NULL && conditionValue == NULL)
-				|| (conditionData != NULL && conditionValue != NULL && left == right);
+		return left == right;
 	case LT_OP:
-		return conditionData != NULL && conditionValue != NULL && left < right;
+		return left < right;
 	case LE_OP:
-		return conditionData != NULL && conditionValue != NULL && left <= right;
+		return left <= right;
 	case GT_OP:
-		return conditionData != NULL && conditionValue != NULL && left > right;
+		return left > right;
 	case GE_OP:
-		return conditionData != NULL && conditionValue != NULL && left >= right;
+		return left >= right;
 	case NE_OP:
-		return (conditionData == NULL && conditionValue != NULL)
-				|| (conditionData != NULL && conditionValue != NULL) || left != right;
+		return left != right;
 	case NO_OP:
 		return true;
 	}
@@ -536,30 +540,68 @@ bool RBFM_ScanIterator::selectInt(const void *conditionData, const void *conditi
 bool RBFM_ScanIterator::selectReal(const void *conditionData, const void *conditionValue,
 		CompOp compOp)
 {
-	float left = conditionData != NULL ? *(float *) conditionData : 0.0f;
-	float right = conditionValue != NULL ? *(float *) conditionValue : 0.0f;
+	if (conditionData == NULL || conditionValue == NULL)
+	{
+		return false;
+	}
+//might be null
+	float left = *(float *) conditionData;
+	float right = *(float *) conditionValue;
 
 	switch (compOp)
 	{
 	case EQ_OP:	// =
-		return (conditionData == NULL && conditionValue == NULL)
-				|| (conditionData != NULL && conditionValue != NULL && equals(left, right));
+		return left == right;
 	case LT_OP:
-		return conditionData != NULL && conditionValue != NULL && left < right;
+		return left < right;
 	case LE_OP:
-		return conditionData != NULL && conditionValue != NULL && left <= right;
+		return left <= right;
 	case GT_OP:
-		return conditionData != NULL && conditionValue != NULL && left > right;
+		return left > right;
 	case GE_OP:
-		return conditionData != NULL && conditionValue != NULL && left >= right;
+		return left >= right;
 	case NE_OP:
-		return (conditionData == NULL && conditionValue != NULL)
-				|| (conditionData != NULL && conditionValue != NULL) || !equals(left, right);
+		return left != right;
+	case NO_OP:
+		return true;
+	}
+
+	return false;
+}
+
+bool RBFM_ScanIterator::selectVarchar(const void *conditionData, const void *conditionValue,
+		CompOp compOp)
+{
+	if (conditionData == NULL || conditionValue == NULL)
+	{
+		return false;
+	}
+	int size;
+	read(conditionData, size, 0);
+	string left = string((char *) conditionData + 4, (char *) conditionData + 4 + size);
+	string right = *(string *) conditionValue;
+	int comp = left.compare(right);
+
+	switch (compOp)
+	{
+	case EQ_OP:	// =
+		return comp == 0;
+	case LT_OP:
+		return comp == -1;
+	case LE_OP:
+		return comp == 0 || comp == -1;
+	case GT_OP:
+		return comp == 1;
+	case GE_OP:
+		return comp == 1 || comp == 0;
+	case NE_OP:
+		return comp != 0;
 	case NO_OP:
 		return true;
 	}
 	return false;
 }
+
 // Never keep the results in the memory. When getNextRecord() is called,
 // a satisfying record needs to be fetched from the file.
 // "data" follows the same format as RecordBasedFileManager::insertRecord().

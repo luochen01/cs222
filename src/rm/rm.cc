@@ -167,7 +167,6 @@ int RelationManager::getLastTableID()
 		return -1;
 	while (rmsi.getNextTuple(rid, tupleBuffer) != RM_EOF)
 	{
-		RecordBasedFileManager::instance()->printRecord(parsedDescriptor, tupleBuffer);
 		parseIteratorData(tableParsedData, tupleBuffer, tableRecordDescriptor, tableAttrNames);
 		if (tableParsedData[0]->isNull())
 		{
