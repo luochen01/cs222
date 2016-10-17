@@ -237,6 +237,8 @@ private:
 
 	// Added methods
 	RC doInsertTuple(const string &tableName, const void *data, RID &rid);
+    RC deleteTuples(const string &tableName, const vector<RID> &rids);
+
 	void initializeCatalogAttrs();
 	void formatRecord(void *record, int &recordSize, const vector<Attribute> &recordDescriptor,
 			const vector<DatumType*> &attrValues);

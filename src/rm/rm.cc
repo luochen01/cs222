@@ -214,8 +214,8 @@ RC RelationManager::deleteTable(const string &tableName)
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
     rbfm->destroyFile(tableName);
 	
-    // Get table id
-    RID rid;
+    // Get table id and rid
+    RID rid_table;
 	int tid;
 	void *returnedData = malloc(PAGE_SIZE);
 	RM_ScanIterator rmsi;
@@ -227,7 +227,7 @@ RC RelationManager::deleteTable(const string &tableName)
 	if (scan(TABLES_TABLE, "table-name", EQ_OP, (void *) &tableName, tableAttrNames, rmsi)
 			!= 0)
 		return -1;
-	while (rmsi.getNextTuple(rid, returnedData) != RM_EOF)
+	while (rmsi.getNextTuple(rid_table, returnedData) != RM_EOF)
 	{
 		parseIteratorData(tableParsedData, returnedData, tableRecordDescriptor, tableAttrNames);
 		tableParsedData[0]->getValue(&tid);
@@ -240,8 +240,9 @@ RC RelationManager::deleteTable(const string &tableName)
 	rmsi.close();
 	clearTuple(tableParsedData);
     
-    // delete column info from COLUMNS_TABLE
-	
+    // Get rids matches table_id in COLUMNS_TABLE
+    RID rid_column;
+    vector<RID> rids_column;
     Attribute attr;
 	vector<string> columnAttrNames;
 	columnAttrNames.push_back("column-name");
@@ -255,28 +256,22 @@ RC RelationManager::deleteTable(const string &tableName)
 	columnParsedData.push_back(new IntType());
 	columnParsedData.push_back(new IntType());
 
-	// FIXME
 	if (scan(COLUMNS_TABLE, "table-id", EQ_OP, (void *) &tid, columnAttrNames, rmsi) != 0)
 		return -1;
-	while (rmsi.getNextTuple(rid, returnedData) != RM_EOF)
+	while (rmsi.getNextTuple(rid_column, returnedData) != RM_EOF)
 	{
-		parseIteratorData(columnParsedData, returnedData, columnRecordDescriptor, columnAttrNames);
-		string name;
-		int type;
-		int length;
-		columnParsedData[0]->getValue(&name);
-		columnParsedData[1]->getValue(&type);
-		columnParsedData[2]->getValue(&length);
-		attr.name = name;
-		attr.type = (AttrType) type;
-		attr.length = length;
-        // FIXME: delete attribute record
+        rids_column.push_back(rid_column);
 	}
-	clearTuple(columnParsedData);
+    clearTuple(columnParsedData);
 	rmsi.close();
     
-    // delete table info from TABLES_TABLE
-	return -1;
+    // Delete records from catalog
+    if (deleteTuples(COLUMNS_TABLE, rids_column) != 0)
+        return -1;
+    if (deleteTuple(TABLES_TABLE, rid_table) != 0)
+        return -1;
+    
+	return 0;
 }
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
@@ -383,7 +378,23 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
     return doInsertTuple(tableName, data, rid);
 }
 
-// FIXME
+RC RelationManager::deleteTuples(const string &tableName, const vector<RID> &rids)
+{
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	vector<Attribute> attrs;
+	FileHandle fileHandle;
+	if (rbfm->openFile(tableName, fileHandle) != 0)
+		return -1;
+
+	getAttributes(tableName, attrs);
+    for (RID rid : rids) {
+	    if (rbfm->deleteRecord(fileHandle, attrs, rid) != 0)
+            return -1;
+    }
+	rbfm->closeFile(fileHandle);
+	return 0;
+}
+
 RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
@@ -438,7 +449,18 @@ RC RelationManager::printTuple(const vector<Attribute> &attrs, const void *data)
 RC RelationManager::readAttribute(const string &tableName, const RID &rid,
 		const string &attributeName, void *data)
 {
-	return -1;
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	vector<Attribute> attrs;
+	FileHandle fileHandle;
+	if (rbfm->openFile(tableName, fileHandle) != 0)
+		return -1;
+
+	getAttributes(tableName, attrs);
+	//int result = rbfm->updateRecord(fileHandle, attrs, data, rid);
+	int result = rbfm->readAttribute(fileHandle, attrs, rid, attributeName, data);
+
+	rbfm->closeFile(fileHandle);
+	return result;
 }
 
 RC RelationManager::scan(const string &tableName, const string &conditionAttribute,
@@ -593,9 +615,9 @@ void RelationManager::parseIteratorData(vector<DatumType *> &parsedData, void *r
 	{
 		Attribute attr = parsedDescriptor[i];
 
-		float valFloat = 0.0;
-		string valString;
-		int length = 0;
+		//float valFloat = 0.0;
+		//string valString;
+		//int length = 0;
 
 		bool isNull = isAttrNull(returnedData, i);
 
@@ -613,13 +635,14 @@ void RelationManager::parseIteratorData(vector<DatumType *> &parsedData, void *r
 			}
 			case TypeReal:
 			{
-				int valFloat = 0;
+				float valFloat = 0;
 				read(returnedData, valFloat, offset);
 				parsedData[i]->setValue(&valFloat);
 				offset += 4;
 				break;
 			}
 			case TypeVarChar:
+            {
 				int length = 0;
 				read(returnedData, length, offset);
 				offset += 4;
@@ -627,6 +650,7 @@ void RelationManager::parseIteratorData(vector<DatumType *> &parsedData, void *r
 				parsedData[i]->setValue(&valString);
 				offset += length;
 				break;
+            }
 			}
 		}
 	}
