@@ -205,7 +205,7 @@ RC RecordPage::readPage(FileHandle& fileHandle, unsigned pageNum)
 {
 	if (samePage(fileHandle, pageNum))
 	{
-		return 0;
+//		return 0;
 	}
 
 	if (fileHandle.readPage(pageNum, data) != 0)
@@ -720,6 +720,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 
 //finish append record
 	fileHandle.writePage(rid.pageNum, curPage.data);
+
 	return 0;
 }
 

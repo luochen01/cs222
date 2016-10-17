@@ -86,7 +86,7 @@ int RBFTest_Scan(RecordBasedFileManager *rbfm, vector<RID> &rids, vector<int> &s
 	names.push_back(recordDescriptor[10].name);
 	RBFM_ScanIterator iterator;
 
-    // FIXME
+	// FIXME
 	rbfm->scan(fileHandle, recordDescriptor, "", NO_OP, NULL, names,
 	//rbfm->scan(fileHandle, recordDescriptor, recordDescriptor[1].name, NO_OP, &value, names,
 	//rbfm->scan(fileHandle, recordDescriptor, recordDescriptor[1].name, LE_OP, &value, names,
