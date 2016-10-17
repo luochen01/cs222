@@ -69,10 +69,7 @@ RelationManager::~RelationManager()
 // Tested
 RC RelationManager::createCatalog()
 {
-	if (createCatalogTables(tableRecordDescriptor, columnRecordDescriptor) != 0)
-		return -1;
-
-	return 0;
+	return createCatalogTables(tableRecordDescriptor, columnRecordDescriptor);
 }
 
 RC RelationManager::deleteCatalog()
@@ -117,7 +114,7 @@ RC RelationManager::addTableToCatalog(const string &tableName, const vector<Attr
 	tableRecordValues.push_back(new StringType(tableName));
 
 	formatRecord(tupleBuffer, recordSize, tableRecordDescriptor, tableRecordValues);
-	insertTuple(TABLES_TABLE, tupleBuffer, rid);
+	doInsertTuple(TABLES_TABLE, tupleBuffer, rid);
 
 	clearTuple(tableRecordValues);
 
@@ -135,7 +132,7 @@ RC RelationManager::addTableToCatalog(const string &tableName, const vector<Attr
 		columnRecordValues.push_back(new IntType(attrs[i].length));
 		columnRecordValues.push_back(new IntType(i + 1));    // column-position, starts with 1
 		formatRecord(tupleBuffer, recordSize, columnRecordDescriptor, columnRecordValues);
-		insertTuple(COLUMNS_TABLE, tupleBuffer, rid);
+		doInsertTuple(COLUMNS_TABLE, tupleBuffer, rid);
 
 		void *tmp = malloc(330);
 		readTuple(COLUMNS_TABLE, rid, tmp);
@@ -198,6 +195,8 @@ RC RelationManager::createCatalogTables(const vector<Attribute> &tableAttrs,
 
 RC RelationManager::createTable(const string &tableName, const vector<Attribute> &attrs)
 {
+    if (tableName == TABLES_TABLE || tableName == COLUMNS_TABLE) return -1;
+
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	if (addTableToCatalog(tableName, attrs) != 0)
 		return -1;
@@ -209,6 +208,75 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 
 RC RelationManager::deleteTable(const string &tableName)
 {
+    if (tableName == TABLES_TABLE || tableName == COLUMNS_TABLE)
+        return -1;
+	
+    // Delete table
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+    rbfm->destroyFile(tableName);
+	
+    // Get table id
+    RID rid;
+	int tid;
+	void *returnedData = malloc(PAGE_SIZE);
+	RM_ScanIterator rmsi;
+	vector<string> tableAttrNames;
+	vector<DatumType *> tableParsedData;
+	tableAttrNames.push_back("table-id");
+	tableParsedData.push_back(new IntType());
+
+	if (scan(TABLES_TABLE, "table-name", EQ_OP, (void *) &tableName, tableAttrNames, rmsi)
+			!= 0)
+		return -1;
+	while (rmsi.getNextTuple(rid, returnedData) != RM_EOF)
+	{
+		parseIteratorData(tableParsedData, returnedData, tableRecordDescriptor, tableAttrNames);
+		tableParsedData[0]->getValue(&tid);
+		if (tableParsedData[0]->isNull())
+		{
+			clearTuple(tableParsedData);
+			return -1;
+		}
+	}
+	rmsi.close();
+	clearTuple(tableParsedData);
+    
+    // delete column info from COLUMNS_TABLE
+	
+    Attribute attr;
+	vector<string> columnAttrNames;
+	columnAttrNames.push_back("column-name");
+	columnAttrNames.push_back("column-type");
+	columnAttrNames.push_back("column-length");
+	columnAttrNames.push_back("column-position");
+
+	vector<DatumType*> columnParsedData;
+	columnParsedData.push_back(new StringType());
+	columnParsedData.push_back(new IntType());
+	columnParsedData.push_back(new IntType());
+	columnParsedData.push_back(new IntType());
+
+	// FIXME
+	if (scan(COLUMNS_TABLE, "table-id", EQ_OP, (void *) &tid, columnAttrNames, rmsi) != 0)
+		return -1;
+	while (rmsi.getNextTuple(rid, returnedData) != RM_EOF)
+	{
+		parseIteratorData(columnParsedData, returnedData, columnRecordDescriptor, columnAttrNames);
+		string name;
+		int type;
+		int length;
+		columnParsedData[0]->getValue(&name);
+		columnParsedData[1]->getValue(&type);
+		columnParsedData[2]->getValue(&length);
+		attr.name = name;
+		attr.type = (AttrType) type;
+		attr.length = length;
+        // FIXME: delete attribute record
+	}
+	clearTuple(columnParsedData);
+	rmsi.close();
+    
+    // delete table info from TABLES_TABLE
 	return -1;
 }
 
@@ -234,8 +302,12 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 	tableAttrNames.push_back("table-id");
 	tableParsedData.push_back(new IntType());
 
+    //int compareValueSize = tableName.size();
+    //char *compareValue = (char *) malloc(compareValueSize + 4);
+    //memcpy(compareValue, &compareValueSize, 4);
+    //memcpy(compareValue+4, tableName.c_str(), compareValueSize);
 	// FIXME: string format
-	if (scan(TABLES_TABLE, "table-name", EQ_OP, (void *) tableName.c_str(), tableAttrNames, rmsi)
+	if (scan(TABLES_TABLE, "table-name", EQ_OP, (void *) &tableName, tableAttrNames, rmsi)
 			!= 0)
 		return -1;
 	while (rmsi.getNextTuple(rid, returnedData) != RM_EOF)
@@ -250,6 +322,7 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 		// FIXME: only use the last matched table id
 	}
 	rmsi.close();
+    //free(compareValue);
 	clearTuple(tableParsedData);
 
 	Attribute attr;
@@ -287,8 +360,7 @@ RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &at
 	return 0;
 }
 
-// Tested
-RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
+RC RelationManager::doInsertTuple(const string &tableName, const void *data, RID &rid)
 {
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
 	FileHandle fileHandle;
@@ -303,14 +375,43 @@ RC RelationManager::insertTuple(const string &tableName, const void *data, RID &
 	return 0;
 }
 
-RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
+// Tested
+RC RelationManager::insertTuple(const string &tableName, const void *data, RID &rid)
 {
-	return -1;
+    if (tableName == TABLES_TABLE || tableName == COLUMNS_TABLE) 
+        return -1;
+
+    return doInsertTuple(tableName, data, rid);
 }
 
+// FIXME
+RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
+{
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	vector<Attribute> attrs;
+	FileHandle fileHandle;
+	if (rbfm->openFile(tableName, fileHandle) != 0)
+		return -1;
+
+	getAttributes(tableName, attrs);
+	int result = rbfm->deleteRecord(fileHandle, attrs, rid);
+	rbfm->closeFile(fileHandle);
+	return result;
+}
+
+// FIXME
 RC RelationManager::updateTuple(const string &tableName, const void *data, const RID &rid)
 {
-	return -1;
+	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
+	vector<Attribute> attrs;
+	FileHandle fileHandle;
+	if (rbfm->openFile(tableName, fileHandle) != 0)
+		return -1;
+
+	getAttributes(tableName, attrs);
+	int result = rbfm->updateRecord(fileHandle, attrs, data, rid);
+	rbfm->closeFile(fileHandle);
+	return result;
 }
 
 // Tested

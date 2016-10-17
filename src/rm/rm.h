@@ -14,6 +14,20 @@ using namespace std;
 #define TABLES_TABLE  "Tables"
 #define COLUMNS_TABLE  "Columns"
 
+typedef struct {
+    int table_id;
+    string table_name;
+    string file_name;
+} TableRecord;
+
+typedef struct {
+    int table_id;
+    string column_name;
+    AttrType column_type;
+    int column_length;
+    int column_position;
+} ColumnRecord;
+
 class DatumType
 {
 protected:
@@ -141,6 +155,26 @@ private:
 	FileHandle fileHandle;
 };
 
+// Placeholder for Catalog class
+class Catalog
+{
+public:
+    Catalog() {};
+    ~Catalog() {};
+    
+    RC createCatalog() { return -1; };
+    RC deleteCatalog() { return -1; };
+
+    int getTableID(const string &tableName) { return 0; };
+    RC createTable(const string &tableName, const vector<Attribute> &attrs) { return -1; };
+    RC deleteTable(const string &tableName) { return -1; };
+    RC getAttributes(const string &tableName, const vector<Attribute> &attrs) { return -1; };
+    
+private:
+    vector<TableRecord> tableCatalog;
+    vector<ColumnRecord> columnCatalog;
+};
+
 // Relation Manager
 class RelationManager
 {
@@ -202,6 +236,7 @@ private:
 	static RelationManager *_rm;
 
 	// Added methods
+	RC doInsertTuple(const string &tableName, const void *data, RID &rid);
 	void initializeCatalogAttrs();
 	void formatRecord(void *record, int &recordSize, const vector<Attribute> &recordDescriptor,
 			const vector<DatumType*> &attrValues);
