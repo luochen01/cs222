@@ -245,6 +245,9 @@ private:
 	bool selectInt(const void * left, const void * right, CompOp compOp);
 
 	bool selectReal(const void * left, const void * right, CompOp compOp);
+
+	bool selectVarchar(const void * left, const void * right, CompOp compOp);
+
 public:
 	RBFM_ScanIterator();
 
