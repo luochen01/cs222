@@ -79,6 +79,11 @@ public:
 		return recordSize;
 	}
 
+	byte * getData()
+	{
+		return data;
+	}
+
 	void reset(void * data, const vector<Attribute>& recordDescriptor, ushort recordSize);
 
 	ushort recordHeaderSize();
@@ -114,12 +119,6 @@ const ushort OVERFLOW_MARKER_SIZE = sizeof(unsigned) * 2;
 class RecordPage
 {
 private:
-
-	const FileHandle* pFileHandle;
-
-	unsigned pageNum;
-
-	bool samePage(FileHandle& fileHandle, unsigned pageNum);
 
 public:
 

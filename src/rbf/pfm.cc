@@ -206,7 +206,6 @@ RC PagedFileManager::closeFile(FileHandle &fileHandle)
 {
 	if (!fileHandle.opened)
 	{
-
 		logError("Fail to close file, because the fileHandle is not opened before!");
 		return -1;
 	}
