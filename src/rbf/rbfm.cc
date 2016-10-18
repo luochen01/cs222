@@ -819,7 +819,7 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle,
 		overflowPage.readPage(fileHandle, pageNum);
 		overflowPage.deleteRecord(slotNum);
 		//overflowPage.invalidate();
-		fileHandle.writePage(pageNum, curPage.data);
+		fileHandle.writePage(pageNum, overflowPage.data);
 
 		curPage.deleteRecord(rid.slotNum);
 		fileHandle.writePage(rid.pageNum, curPage.data);
