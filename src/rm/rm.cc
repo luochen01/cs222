@@ -4,6 +4,7 @@
 using namespace std;
 
 RelationManager* RelationManager::_rm = 0;
+Catalog* Catalog::_ctlg = 0;
 
 void IntType::getValue(void * val)
 {
@@ -38,16 +39,23 @@ void StringType::setValue(const void * val)
 	_isNull = false;
 }
 
+Catalog* Catalog::instance() {
+    if (!_ctlg)
+        _ctlg = new Catalog();
+    
+    return _ctlg;
+}
+
 Catalog::Catalog()
 {
 	tupleBuffer = new byte[PAGE_SIZE];
     initializeCatalogAttrs();
-    if (loadCatalog() != 0) {
-        // FIXME
-    } else {
-        tableCatalog.clear();
-        columnCatalog.clear();
-    }
+    //if (loadCatalog() != 0) {
+    //    // FIXME
+    //} else {
+    //    tableCatalog.clear();
+    //    columnCatalog.clear();
+    //}
 }
 
 Catalog::~Catalog() 
@@ -449,12 +457,14 @@ RelationManager::~RelationManager()
 
 RC RelationManager::createCatalog()
 {
-	return ctlg.createCatalog();
+    Catalog* ctlg = Catalog::instance();
+	return ctlg->createCatalog();
 }
 
 RC RelationManager::deleteCatalog()
 {
-    return ctlg.deleteCatalog();
+    Catalog* ctlg = Catalog::instance();
+    return ctlg->deleteCatalog();
 }
 
 RC RelationManager::createTable(const string &tableName, const vector<Attribute> &attrs)
@@ -462,7 +472,8 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
     if (tableName == TABLES_TABLE || tableName == COLUMNS_TABLE) return -1;
 
 	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
-	if (ctlg.addTableToCatalog(tableName, attrs) != 0)
+    Catalog* ctlg = Catalog::instance();
+	if (ctlg->addTableToCatalog(tableName, attrs) != 0)
 		return -1;
 
 	if (rbfm->createFile(tableName) != 0)
@@ -482,14 +493,15 @@ RC RelationManager::deleteTable(const string &tableName)
     // Get table id and rid
     RID rid_table;
 	int tid;
-    if (ctlg.getTableID(tableName, tid, rid_table) != 0)
+    Catalog* ctlg = Catalog::instance();
+    if (ctlg->getTableID(tableName, tid, rid_table) != 0)
         return -1;
     
     // Get rids matches table_id in COLUMNS_TABLE
     RID rid_column;
     vector<RID> rids_column;
     vector<Attribute> attrs;
-    if (ctlg.getColumnAttributes(tid, attrs, rids_column) != 0)
+    if (ctlg->getColumnAttributes(tid, attrs, rids_column) != 0)
         return -1;
     
     // Delete records from catalog
@@ -503,7 +515,8 @@ RC RelationManager::deleteTable(const string &tableName)
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
-    return ctlg.getAttributes(tableName, attrs);
+    Catalog* ctlg = Catalog::instance();
+    return ctlg->getAttributes(tableName, attrs);
 }
 
 RC RelationManager::doInsertTuple(const string &tableName, const void *data, RID &rid)

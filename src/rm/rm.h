@@ -161,10 +161,12 @@ private:
 // Placeholder for Catalog class
 class Catalog
 {
-public:
+protected:
     Catalog();
     ~Catalog();
     
+public:
+	static Catalog* instance();
     // Tested
     RC createCatalog();
     RC deleteCatalog();
@@ -176,6 +178,8 @@ public:
     RC getColumnAttributes(const int tableID, vector<Attribute> &attrs, vector<RID> &rids);
     
 private:
+    static Catalog *_ctlg;
+
     vector<TableRecord> tableCatalog;
     vector<ColumnRecord> columnCatalog;
 
@@ -248,7 +252,7 @@ private:
     friend class Catalog;
 
 	static RelationManager *_rm;
-    Catalog ctlg;
+    //Catalog ctlg;
 
 	// Added methods
 	RC doInsertTuple(const string &tableName, const void *data, RID &rid);
