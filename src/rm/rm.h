@@ -171,6 +171,10 @@ public:
     RC createCatalog();
     RC deleteCatalog();
 
+    static vector<Attribute> getTableAttributes();
+    static vector<Attribute> getColumnAttributes();
+    static RC getCatalogAttributes(vector<Attribute> &tableAttrs, vector<Attribute> &columnAttrs);
+
 	RC addTableToCatalog(const string &tableName, const vector<Attribute> &attrs);
     RC getTableID(const string &tableName, int &tid, RID &rid);
 	int getLastTableID();

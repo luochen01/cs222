@@ -39,6 +39,113 @@ void StringType::setValue(const void * val)
 	_isNull = false;
 }
 
+void Catalog::initializeCatalogAttrs()
+{
+	Attribute attr;
+	attr.name = "table-id";
+	attr.type = TypeInt;
+	attr.length = (AttrLength) 4;
+	tableRecordDescriptor.push_back(attr);
+
+	attr.name = "table-name";
+	attr.type = TypeVarChar;
+	attr.length = (AttrLength) 50;
+	tableRecordDescriptor.push_back(attr);
+
+	attr.name = "file-name";
+	attr.type = TypeVarChar;
+	attr.length = (AttrLength) 50;
+	tableRecordDescriptor.push_back(attr);
+
+	attr.name = "table-id";
+	attr.type = TypeInt;
+	attr.length = (AttrLength) 4;
+	columnRecordDescriptor.push_back(attr);
+
+	attr.name = "column-name";
+	attr.type = TypeVarChar;
+	attr.length = (AttrLength) 50;
+	columnRecordDescriptor.push_back(attr);
+
+	attr.name = "column-type";
+	attr.type = TypeInt;
+	attr.length = (AttrLength) 4;
+	columnRecordDescriptor.push_back(attr);
+
+	attr.name = "column-length";
+	attr.type = TypeInt;
+	attr.length = (AttrLength) 4;
+	columnRecordDescriptor.push_back(attr);
+
+	attr.name = "column-position";
+	attr.type = TypeInt;
+	attr.length = (AttrLength) 4;
+	columnRecordDescriptor.push_back(attr);
+}
+
+vector<Attribute> Catalog::getTableAttributes()
+{
+    vector<Attribute> tableAttrs;
+
+	Attribute attr;
+	attr.name = "table-id";
+	attr.type = TypeInt;
+	attr.length = (AttrLength) 4;
+	tableAttrs.push_back(attr);
+
+	attr.name = "table-name";
+	attr.type = TypeVarChar;
+	attr.length = (AttrLength) 50;
+	tableAttrs.push_back(attr);
+
+	attr.name = "file-name";
+	attr.type = TypeVarChar;
+	attr.length = (AttrLength) 50;
+	tableAttrs.push_back(attr);
+    
+    return tableAttrs;
+}
+
+vector<Attribute> Catalog::getColumnAttributes()
+{
+    vector<Attribute> columnAttrs;
+	Attribute attr;
+
+	attr.name = "table-id";
+	attr.type = TypeInt;
+	attr.length = (AttrLength) 4;
+	columnAttrs.push_back(attr);
+
+	attr.name = "column-name";
+	attr.type = TypeVarChar;
+	attr.length = (AttrLength) 50;
+	columnAttrs.push_back(attr);
+
+	attr.name = "column-type";
+	attr.type = TypeInt;
+	attr.length = (AttrLength) 4;
+	columnAttrs.push_back(attr);
+
+	attr.name = "column-length";
+	attr.type = TypeInt;
+	attr.length = (AttrLength) 4;
+	columnAttrs.push_back(attr);
+
+	attr.name = "column-position";
+	attr.type = TypeInt;
+	attr.length = (AttrLength) 4;
+	columnAttrs.push_back(attr);
+    
+    return columnAttrs;
+}
+
+RC Catalog::getCatalogAttributes(vector<Attribute> &tableAttrs, vector<Attribute> &columnAttrs)
+{
+    tableAttrs = getTableAttributes();
+    columnAttrs = getColumnAttributes();
+    return 0;
+}
+
 Catalog* Catalog::instance() {
     if (!_ctlg)
         _ctlg = new Catalog();
@@ -50,12 +157,10 @@ Catalog::Catalog()
 {
 	tupleBuffer = new byte[PAGE_SIZE];
     initializeCatalogAttrs();
-    //if (loadCatalog() != 0) {
-    //    // FIXME
-    //} else {
-    //    tableCatalog.clear();
-    //    columnCatalog.clear();
-    //}
+    if (loadCatalog() != 0) {
+        tableCatalog.clear();
+        columnCatalog.clear();
+    }
 }
 
 Catalog::~Catalog() 
@@ -141,11 +246,11 @@ RC Catalog::loadCatalog()
             int columntype;
             int columnlength;
             int columnposition;
-            tableParsedData[0]->getValue(&tableid);
-            tableParsedData[1]->getValue(&columnname);
-            tableParsedData[2]->getValue(&columntype);
-            tableParsedData[2]->getValue(&columnlength);
-            tableParsedData[2]->getValue(&columnposition);
+            columnParsedData[0]->getValue(&tableid);
+            columnParsedData[1]->getValue(&columnname);
+            columnParsedData[2]->getValue(&columntype);
+            columnParsedData[3]->getValue(&columnlength);
+            columnParsedData[4]->getValue(&columnposition);
 
             cr.rid = ridColumn;
             cr.table_id = tableid;
@@ -217,33 +322,6 @@ RC Catalog::getColumnAttributes(const int tableID, vector<Attribute> &attrs, vec
     return 0;
 }
 
-RC Catalog::getTableID(const string &tableName, int &tid, RID &rid) 
-{ 
-    RelationManager* rm = RelationManager::instance();
-	RM_ScanIterator rmsi;
-	vector<string> tableAttrNames;
-	vector<DatumType *> tableParsedData;
-	tableAttrNames.push_back("table-id");
-	tableParsedData.push_back(new IntType());
-
-	if (rm->scan(TABLES_TABLE, "table-name", EQ_OP, (void *) &tableName, tableAttrNames, rmsi)
-			!= 0)
-		return -1;
-	while (rmsi.getNextTuple(rid, tupleBuffer) != RM_EOF)
-	{
-		rm->parseIteratorData(tableParsedData, tupleBuffer, tableRecordDescriptor, tableAttrNames);
-		tableParsedData[0]->getValue(&tid);
-		if (tableParsedData[0]->isNull())
-		{
-			rm->clearTuple(tableParsedData);
-			return -1;
-		}
-	}
-	rmsi.close();
-	rm->clearTuple(tableParsedData);
-    return 0; 
-}
-
 RC Catalog::getAttributes(const string &tableName, vector<Attribute> &attrs) 
 {
 	if (tableName == TABLES_TABLE)
@@ -266,50 +344,6 @@ RC Catalog::getAttributes(const string &tableName, vector<Attribute> &attrs)
 
     vector<RID> rids;
     return getColumnAttributes(tid, attrs, rids);
-}
-
-void Catalog::initializeCatalogAttrs()
-{
-	Attribute attr;
-	attr.name = "table-id";
-	attr.type = TypeInt;
-	attr.length = (AttrLength) 4;
-	tableRecordDescriptor.push_back(attr);
-
-	attr.name = "table-name";
-	attr.type = TypeVarChar;
-	attr.length = (AttrLength) 50;
-	tableRecordDescriptor.push_back(attr);
-
-	attr.name = "file-name";
-	attr.type = TypeVarChar;
-	attr.length = (AttrLength) 50;
-	tableRecordDescriptor.push_back(attr);
-
-	attr.name = "table-id";
-	attr.type = TypeInt;
-	attr.length = (AttrLength) 4;
-	columnRecordDescriptor.push_back(attr);
-
-	attr.name = "column-name";
-	attr.type = TypeVarChar;
-	attr.length = (AttrLength) 50;
-	columnRecordDescriptor.push_back(attr);
-
-	attr.name = "column-type";
-	attr.type = TypeInt;
-	attr.length = (AttrLength) 4;
-	columnRecordDescriptor.push_back(attr);
-
-	attr.name = "column-length";
-	attr.type = TypeInt;
-	attr.length = (AttrLength) 4;
-	columnRecordDescriptor.push_back(attr);
-
-	attr.name = "column-position";
-	attr.type = TypeInt;
-	attr.length = (AttrLength) 4;
-	columnRecordDescriptor.push_back(attr);
 }
 
 RC Catalog::createCatalogTables(const vector<Attribute> &tableAttrs,
@@ -342,7 +376,7 @@ RC Catalog::getTableIDs(vector<int> &tids, vector<RID> &rids)
         return -1;
 	while (rmsi.getNextTuple(rid, tupleBuffer) != RM_EOF)
 	{
-		rm->parseIteratorData(tableParsedData, tupleBuffer, tableRecordDescriptor, tableAttrNames);
+        rm->parseIteratorData(tableParsedData, tupleBuffer, tableRecordDescriptor, tableAttrNames);
 		if (tableParsedData[0]->isNull())
 		{
 			return -1;
@@ -352,9 +386,36 @@ RC Catalog::getTableIDs(vector<int> &tids, vector<RID> &rids)
         tids.push_back(tid);
 	}
 
-	rm->clearTuple(tableParsedData);
+    rm->clearTuple(tableParsedData);
 	rmsi.close();
 	return 0;
+}
+
+RC Catalog::getTableID(const string &tableName, int &tid, RID &rid) 
+{ 
+    RelationManager* rm = RelationManager::instance();
+	RM_ScanIterator rmsi;
+	vector<string> tableAttrNames;
+	vector<DatumType *> tableParsedData;
+	tableAttrNames.push_back("table-id");
+	tableParsedData.push_back(new IntType());
+
+	if (rm->scan(TABLES_TABLE, "table-name", EQ_OP, (void *) &tableName, tableAttrNames, rmsi)
+			!= 0)
+		return -1;
+	while (rmsi.getNextTuple(rid, tupleBuffer) != RM_EOF)
+	{
+		rm->parseIteratorData(tableParsedData, tupleBuffer, tableRecordDescriptor, tableAttrNames);
+		tableParsedData[0]->getValue(&tid);
+		if (tableParsedData[0]->isNull())
+		{
+			rm->clearTuple(tableParsedData);
+			return -1;
+		}
+	}
+	rmsi.close();
+	rm->clearTuple(tableParsedData);
+    return 0; 
 }
 
 int Catalog::getLastTableID()
@@ -515,6 +576,17 @@ RC RelationManager::deleteTable(const string &tableName)
 
 RC RelationManager::getAttributes(const string &tableName, vector<Attribute> &attrs)
 {
+	if (tableName == TABLES_TABLE)
+	{
+		attrs = Catalog::getTableAttributes();
+		return 0;
+	}
+	if (tableName == COLUMNS_TABLE)
+	{
+		attrs = Catalog::getColumnAttributes();
+		return 0;
+	}
+
     Catalog* ctlg = Catalog::instance();
     return ctlg->getAttributes(tableName, attrs);
 }
