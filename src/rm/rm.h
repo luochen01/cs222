@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdarg>
 #include <cassert>
+#include <algorithm>
 
 #include "../rbf/rbfm.h"
 
@@ -15,12 +16,14 @@ using namespace std;
 #define COLUMNS_TABLE  "Columns"
 
 typedef struct {
+    RID rid;
     int table_id;
     string table_name;
     string file_name;
 } TableRecord;
 
 typedef struct {
+    RID rid;
     int table_id;
     string column_name;
     AttrType column_type;
@@ -176,6 +179,8 @@ private:
     vector<TableRecord> tableCatalog;
     vector<ColumnRecord> columnCatalog;
 
+    RC loadCatalog();
+
 	byte * tupleBuffer;
 	void clearTuple(vector<DatumType *> & tuple);
 	
@@ -183,6 +188,7 @@ private:
 	vector<Attribute> tableRecordDescriptor;
 	vector<Attribute> columnRecordDescriptor;
 	
+    RC getTableIDs(vector<int> &tids, vector<RID> &rids);
 	void initializeCatalogAttrs();
     RC createCatalogTables(const vector<Attribute> &tableAttrs, const vector<Attribute> &columnAttrs);
 };
@@ -250,6 +256,8 @@ private:
 
 	void formatRecord(void *record, int &recordSize, const vector<Attribute> &recordDescriptor,
 			const vector<DatumType*> &attrValues);
+	void parseData(vector<DatumType*> &parsedData, void *Data,
+			const vector<Attribute> &recordDescriptor);
 	void parseIteratorData(vector<DatumType*> &parsedData, void *returnedData,
 			const vector<Attribute> &recordDescriptor, const vector<string> &attrNames);
 	bool getBit(unsigned char byte, unsigned pos);

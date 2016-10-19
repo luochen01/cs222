@@ -42,11 +42,115 @@ Catalog::Catalog()
 {
 	tupleBuffer = new byte[PAGE_SIZE];
     initializeCatalogAttrs();
+    if (loadCatalog() != 0) {
+        // FIXME
+    } else {
+        tableCatalog.clear();
+        columnCatalog.clear();
+    }
 }
 
 Catalog::~Catalog() 
 {
 	delete[] tupleBuffer;
+}
+
+//vector<TableRecord> tableCatalog;
+//vector<ColumnRecord> columnCatalog;
+//typedef struct {
+//    RID rid;
+//    int table_id;
+//    string table_name;
+//    string file_name;
+//} TableRecord;
+//
+//typedef struct {
+//    RID rid;
+//    int table_id;
+//    string column_name;
+//    AttrType column_type;
+//    int column_length;
+//    int column_position;
+//} ColumnRecord;
+RC Catalog::loadCatalog()
+{
+    TableRecord tr;
+    ColumnRecord cr;
+
+    vector<int> tids;
+    vector<RID> rids;
+    if (getTableIDs(tids, rids) != 0)
+        return -1;
+
+    RelationManager* rm = RelationManager::instance();
+	vector<DatumType*> tableParsedData;
+	tableParsedData.push_back(new IntType());
+    tableParsedData.push_back(new StringType());
+    tableParsedData.push_back(new StringType());
+
+    for (RID rid : rids) {
+        if (rm->readTuple(TABLES_TABLE, rid, tupleBuffer) != 0)
+            return -1;
+        
+        rm->parseData(tableParsedData, tupleBuffer, tableRecordDescriptor);
+        int tableid;
+        string tablename;
+        string filename;
+        tableParsedData[0]->getValue(&tableid);
+        tableParsedData[1]->getValue(&tablename);
+        tableParsedData[2]->getValue(&filename);
+
+        tr.rid = rid;
+        tr.table_id = tableid;
+        tr.table_name = tablename;
+        tr.file_name = filename;
+        tableCatalog.push_back(tr);
+    }
+
+    //tableCatalog.push_back(tableRecord); 
+	rm->clearTuple(tableParsedData);
+	
+	vector<DatumType*> columnParsedData;
+	columnParsedData.push_back(new IntType());
+    columnParsedData.push_back(new StringType());
+	columnParsedData.push_back(new IntType());
+	columnParsedData.push_back(new IntType());
+	columnParsedData.push_back(new IntType());
+	
+    
+    for (int tid : tids) {
+        vector<RID> ridsColumn;
+        vector<Attribute> attrs;
+        if (getColumnAttributes(tid, attrs, ridsColumn) != 0)
+            return -1;
+        for (RID ridColumn : ridsColumn) {
+            if (rm->readTuple(COLUMNS_TABLE, ridColumn, tupleBuffer) != 0)
+                return -1;
+        
+            rm->parseData(columnParsedData, tupleBuffer, columnRecordDescriptor);
+            int tableid;
+            string columnname;
+            int columntype;
+            int columnlength;
+            int columnposition;
+            tableParsedData[0]->getValue(&tableid);
+            tableParsedData[1]->getValue(&columnname);
+            tableParsedData[2]->getValue(&columntype);
+            tableParsedData[2]->getValue(&columnlength);
+            tableParsedData[2]->getValue(&columnposition);
+
+            cr.rid = ridColumn;
+            cr.table_id = tableid;
+            cr.column_name = columnname;
+            cr.column_type = (AttrType)columntype;
+            cr.column_length = columnlength;
+            cr.column_position = columnposition;
+            columnCatalog.push_back(cr);
+        }
+    }
+    
+    rm->clearTuple(columnParsedData);
+    return 0;
 }
     
 RC Catalog::createCatalog() 
@@ -126,7 +230,6 @@ RC Catalog::getTableID(const string &tableName, int &tid, RID &rid)
 			rm->clearTuple(tableParsedData);
 			return -1;
 		}
-		// FIXME: only use the last matched table id
 	}
 	rmsi.close();
 	rm->clearTuple(tableParsedData);
@@ -213,11 +316,10 @@ RC Catalog::createCatalogTables(const vector<Attribute> &tableAttrs,
 	return 0;
 }
 
-int Catalog::getLastTableID()
+RC Catalog::getTableIDs(vector<int> &tids, vector<RID> &rids)
 {
 	RID rid;
-	int maxTableID = 0;
-	int tid = 0;
+	int tid;
 	RM_ScanIterator rmsi;
     RelationManager* rm = RelationManager::instance();
 	vector<string> tableAttrNames;
@@ -238,14 +340,24 @@ int Catalog::getLastTableID()
 			return -1;
 		}
 		tableParsedData[0]->getValue(&tid);
-		if (maxTableID < tid)
-			maxTableID = tid;
-		// FIXME: only use the last matched table id
+        rids.push_back(rid);
+        tids.push_back(tid);
 	}
 
 	rm->clearTuple(tableParsedData);
 	rmsi.close();
-	return maxTableID;
+	return 0;
+}
+
+int Catalog::getLastTableID()
+{
+    vector<int> tids;
+    vector<RID> rids;
+    if (getTableIDs(tids, rids) != 0)
+        return -1;
+
+    auto maxTableID = max_element(tids.begin(), tids.end());
+	return *maxTableID;
 }
 
 RC Catalog::addTableToCatalog(const string &tableName, const vector<Attribute> &attrs)
@@ -342,11 +454,7 @@ RC RelationManager::createCatalog()
 
 RC RelationManager::deleteCatalog()
 {
-	RecordBasedFileManager *rbfm = RecordBasedFileManager::instance();
-	rbfm->destroyFile(COLUMNS_TABLE);
-	rbfm->destroyFile(TABLES_TABLE);
-	// TODO
-	return -1;
+    return ctlg.deleteCatalog();
 }
 
 RC RelationManager::createTable(const string &tableName, const vector<Attribute> &attrs)
@@ -584,6 +692,51 @@ void RelationManager::formatRecord(void *record, int &recordSize,
 	recordSize = offset;
 }
 
+void RelationManager::parseData(vector<DatumType *> &parsedData, void *Data, const vector<Attribute> &recordDescriptor)
+{
+	unsigned numOfAttr = recordDescriptor.size();
+	unsigned lenOfIndr = (numOfAttr % 8 == 0) ? numOfAttr / 8 : numOfAttr / 8 + 1;
+	unsigned offset = lenOfIndr;
+	for (unsigned i = 0; i < numOfAttr; i++)
+	{
+		Attribute attr = recordDescriptor[i];
+		bool isNull = isAttrNull(Data, i);
+		if (!isNull)
+		{
+			switch (attr.type)
+			{
+			case TypeInt:
+			{
+				int valInt = 0;
+				read(Data, valInt, offset);
+				parsedData[i]->setValue(&valInt);
+				offset += 4;
+				break;
+			}
+			case TypeReal:
+			{
+				float valFloat = 0;
+				read(Data, valFloat, offset);
+				parsedData[i]->setValue(&valFloat);
+				offset += 4;
+				break;
+			}
+			case TypeVarChar:
+            {
+				int length = 0;
+				read(Data, length, offset);
+				offset += 4;
+				string valString = string((char*) Data + offset, length);
+				parsedData[i]->setValue(&valString);
+				offset += length;
+				break;
+            }
+			}
+		}
+	}
+
+}
+
 void RelationManager::parseIteratorData(vector<DatumType *> &parsedData, void *returnedData,
 		const vector<Attribute> &recordDescriptor, const vector<string> &attrNames)
 {
@@ -599,46 +752,47 @@ void RelationManager::parseIteratorData(vector<DatumType *> &parsedData, void *r
 		}
 	}
 
-	unsigned numOfAttr = parsedDescriptor.size();
-	unsigned lenOfIndr = (numOfAttr % 8 == 0) ? numOfAttr / 8 : numOfAttr / 8 + 1;
-	unsigned offset = lenOfIndr;
-	for (unsigned i = 0; i < numOfAttr; i++)
-	{
-		Attribute attr = parsedDescriptor[i];
-		bool isNull = isAttrNull(returnedData, i);
-		if (!isNull)
-		{
-			switch (attr.type)
-			{
-			case TypeInt:
-			{
-				int valInt = 0;
-				read(returnedData, valInt, offset);
-				parsedData[i]->setValue(&valInt);
-				offset += 4;
-				break;
-			}
-			case TypeReal:
-			{
-				float valFloat = 0;
-				read(returnedData, valFloat, offset);
-				parsedData[i]->setValue(&valFloat);
-				offset += 4;
-				break;
-			}
-			case TypeVarChar:
-            {
-				int length = 0;
-				read(returnedData, length, offset);
-				offset += 4;
-				string valString = string((char*) returnedData + offset, length);
-				parsedData[i]->setValue(&valString);
-				offset += length;
-				break;
-            }
-			}
-		}
-	}
+    parseData(parsedData, returnedData, parsedDescriptor);
+	//unsigned numOfAttr = parsedDescriptor.size();
+	//unsigned lenOfIndr = (numOfAttr % 8 == 0) ? numOfAttr / 8 : numOfAttr / 8 + 1;
+	//unsigned offset = lenOfIndr;
+	//for (unsigned i = 0; i < numOfAttr; i++)
+	//{
+	//	Attribute attr = parsedDescriptor[i];
+	//	bool isNull = isAttrNull(returnedData, i);
+	//	if (!isNull)
+	//	{
+	//		switch (attr.type)
+	//		{
+	//		case TypeInt:
+	//		{
+	//			int valInt = 0;
+	//			read(returnedData, valInt, offset);
+	//			parsedData[i]->setValue(&valInt);
+	//			offset += 4;
+	//			break;
+	//		}
+	//		case TypeReal:
+	//		{
+	//			float valFloat = 0;
+	//			read(returnedData, valFloat, offset);
+	//			parsedData[i]->setValue(&valFloat);
+	//			offset += 4;
+	//			break;
+	//		}
+	//		case TypeVarChar:
+    //        {
+	//			int length = 0;
+	//			read(returnedData, length, offset);
+	//			offset += 4;
+	//			string valString = string((char*) returnedData + offset, length);
+	//			parsedData[i]->setValue(&valString);
+	//			offset += length;
+	//			break;
+    //        }
+	//		}
+	//	}
+	//}
 
 }
 
