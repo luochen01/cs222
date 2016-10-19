@@ -167,9 +167,10 @@ public:
     RC deleteCatalog();
 
 	RC addTableToCatalog(const string &tableName, const vector<Attribute> &attrs);
-    int getTableID(const string &tableName);
+    RC getTableID(const string &tableName, int &tid, RID &rid);
 	int getLastTableID();
     RC getAttributes(const string &tableName, vector<Attribute> &attrs);
+    RC getColumnAttributes(const int tableID, vector<Attribute> &attrs, vector<RID> &rids);
     
 private:
     vector<TableRecord> tableCatalog;
@@ -182,7 +183,6 @@ private:
 	vector<Attribute> tableRecordDescriptor;
 	vector<Attribute> columnRecordDescriptor;
 	
-    RC getColumnAttributes(const int tableID, vector<Attribute> &attrs);
 	void initializeCatalogAttrs();
     RC createCatalogTables(const vector<Attribute> &tableAttrs, const vector<Attribute> &columnAttrs);
 };
@@ -191,8 +191,6 @@ private:
 class RelationManager
 {
 private:
-	byte * tupleBuffer;
-
 	void clearTuple(vector<DatumType *> & tuple);
 
 public:
@@ -236,10 +234,6 @@ public:
 
 	RC dropAttribute(const string &tableName, const string &attributeName);
 
-	// hard-coded info
-	vector<Attribute> tableRecordDescriptor;
-	vector<Attribute> columnRecordDescriptor;
-
 protected:
 	RelationManager();
 	~RelationManager();
@@ -254,13 +248,8 @@ private:
 	RC doInsertTuple(const string &tableName, const void *data, RID &rid);
     RC deleteTuples(const string &tableName, const vector<RID> &rids);
 
-	//void initializeCatalogAttrs();
 	void formatRecord(void *record, int &recordSize, const vector<Attribute> &recordDescriptor,
 			const vector<DatumType*> &attrValues);
-	//RC createCatalogTables(const vector<Attribute> &tableAttrs,
-//			const vector<Attribute> &columnAttrs);
-	//int getLastTableID();
-	//RC addTableToCatalog(const string &tableName, const vector<Attribute> &attrs);
 	void parseIteratorData(vector<DatumType*> &parsedData, void *returnedData,
 			const vector<Attribute> &recordDescriptor, const vector<string> &attrNames);
 	bool getBit(unsigned char byte, unsigned pos);
