@@ -159,20 +159,32 @@ private:
 class Catalog
 {
 public:
-    Catalog() {};
-    ~Catalog() {};
+    Catalog();
+    ~Catalog();
     
-    RC createCatalog() { return -1; };
-    RC deleteCatalog() { return -1; };
+    // Tested
+    RC createCatalog();
+    RC deleteCatalog();
 
-    int getTableID(const string &tableName) { return 0; };
-    RC createTable(const string &tableName, const vector<Attribute> &attrs) { return -1; };
-    RC deleteTable(const string &tableName) { return -1; };
-    RC getAttributes(const string &tableName, const vector<Attribute> &attrs) { return -1; };
+	RC addTableToCatalog(const string &tableName, const vector<Attribute> &attrs);
+    int getTableID(const string &tableName);
+	int getLastTableID();
+    RC getAttributes(const string &tableName, vector<Attribute> &attrs);
     
 private:
     vector<TableRecord> tableCatalog;
     vector<ColumnRecord> columnCatalog;
+
+	byte * tupleBuffer;
+	void clearTuple(vector<DatumType *> & tuple);
+	
+    // hard-coded info
+	vector<Attribute> tableRecordDescriptor;
+	vector<Attribute> columnRecordDescriptor;
+	
+    RC getColumnAttributes(const int tableID, vector<Attribute> &attrs);
+	void initializeCatalogAttrs();
+    RC createCatalogTables(const vector<Attribute> &tableAttrs, const vector<Attribute> &columnAttrs);
 };
 
 // Relation Manager
@@ -233,19 +245,22 @@ protected:
 	~RelationManager();
 
 private:
+    friend class Catalog;
+
 	static RelationManager *_rm;
+    Catalog ctlg;
 
 	// Added methods
 	RC doInsertTuple(const string &tableName, const void *data, RID &rid);
     RC deleteTuples(const string &tableName, const vector<RID> &rids);
 
-	void initializeCatalogAttrs();
+	//void initializeCatalogAttrs();
 	void formatRecord(void *record, int &recordSize, const vector<Attribute> &recordDescriptor,
 			const vector<DatumType*> &attrValues);
-	RC createCatalogTables(const vector<Attribute> &tableAttrs,
-			const vector<Attribute> &columnAttrs);
-	int getLastTableID();
-	RC addTableToCatalog(const string &tableName, const vector<Attribute> &attrs);
+	//RC createCatalogTables(const vector<Attribute> &tableAttrs,
+//			const vector<Attribute> &columnAttrs);
+	//int getLastTableID();
+	//RC addTableToCatalog(const string &tableName, const vector<Attribute> &attrs);
 	void parseIteratorData(vector<DatumType*> &parsedData, void *returnedData,
 			const vector<Attribute> &recordDescriptor, const vector<string> &attrNames);
 	bool getBit(unsigned char byte, unsigned pos);
