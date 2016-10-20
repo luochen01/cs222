@@ -179,7 +179,10 @@ public:
     RC getTableID(const string &tableName, int &tid, RID &rid);
 	int getLastTableID();
     RC getAttributes(const string &tableName, vector<Attribute> &attrs);
-    RC getColumnAttributes(const int tableID, vector<Attribute> &attrs, vector<RID> &rids);
+    RC getColumns(const int tableID, vector<Attribute> &attrs, vector<RID> &rids);
+    RC getColumnsFromFile(const int tableID, vector<Attribute> &attrs, vector<RID> &rids);
+    RC deleteTableRecord(RID &rid);
+    RC deleteColumnRecord(RID &rid);
     
 private:
     static Catalog *_ctlg;
@@ -197,8 +200,7 @@ private:
 	vector<Attribute> columnRecordDescriptor;
 	
     RC getTableIDs(vector<int> &tids, vector<RID> &rids);
-	void initializeCatalogAttrs();
-    RC createCatalogTables(const vector<Attribute> &tableAttrs, const vector<Attribute> &columnAttrs);
+    RC getTableIDsFromFile(vector<int> &tids, vector<RID> &rids);
 };
 
 // Relation Manager
