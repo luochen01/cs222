@@ -62,31 +62,33 @@ void write(ostream& os, unsigned offset, const void * data, unsigned size);
 
 void read(istream& os, unsigned offset, void * data, unsigned size);
 
-template<typename T> void read(const void * data, T& result, unsigned offset, unsigned size)
+template<typename T> int read(const void * data, T& result, unsigned offset, unsigned size)
 {
 	memcpy(&result, ((byte*) data + offset), size);
+	return size;
 }
 
-template<typename T> void write(void * data, const T& value, unsigned offset, unsigned size)
+template<typename T> int write(void * data, const T& value, unsigned offset, unsigned size)
 {
 	memcpy((byte*) data + offset, &value, size);
+	return size;
 }
 
-template<typename T> void read(const void * data, T& value, unsigned offset)
+template<typename T> int read(const void * data, T& value, unsigned offset)
 {
 	return read(data, value, offset, sizeof(T));
 }
 
-template<typename T> void write(void * data, const T& value, unsigned offset)
+template<typename T> int write(void * data, const T& value, unsigned offset)
 {
-	write(data, value, offset, sizeof(T));
+	return write(data, value, offset, sizeof(T));
 }
 
-string readString(const void * data, unsigned offset);
+int readString(const void * data, string & value, unsigned offset);
 
-void writeString(void * data, const string& value, unsigned offset);
+int writeString(void * data, const string& value, unsigned offset);
 
-void writeBuffer(void * to, unsigned toOffset, const void * from, unsigned fromOffset,
+int writeBuffer(void * to, unsigned toOffset, const void * from, unsigned fromOffset,
 		unsigned size);
 
 bool exists(const string &fileName);

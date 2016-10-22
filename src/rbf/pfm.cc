@@ -55,31 +55,31 @@ void writeString(ostream& os, const string& str)
 	os.write(str.c_str(), str.size());
 }
 
-string readString(void * data, unsigned offset)
+int readString(const void * data, string& value, unsigned offset)
 {
-	ushort size;
+	unsigned size;
 	read(data, size, offset);
-	offset += sizeof(ushort);
+	offset += sizeof(unsigned);
 
 	char* buffer = new char[size];
 	memcpy(buffer, (byte *) data + offset, size);
-	string str(buffer, buffer + size);
+	value = string(buffer, buffer + size);
 	delete[] buffer;
-	return str;
+	return size + sizeof(unsigned);
 }
 
-void writeString(void * data, const string& value, unsigned offset)
+int writeString(void * data, const string& value, unsigned offset)
 {
-	write(data, (ushort) value.size(), offset);
-	offset += sizeof(ushort);
-
+	write(data, (unsigned) value.size(), offset);
+	offset += sizeof(unsigned);
 	memcpy((byte*) data + offset, value.c_str(), value.size());
+	return value.size() + sizeof(unsigned);
 }
 
-void writeBuffer(void * to, unsigned toOffset, const void * from, unsigned fromOffset,
-		unsigned size)
+int writeBuffer(void * to, unsigned toOffset, const void * from, unsigned fromOffset, unsigned size)
 {
 	memcpy((byte *) to + toOffset, (byte*) from + fromOffset, size);
+	return size;
 }
 
 bool exists(const string& fileName)

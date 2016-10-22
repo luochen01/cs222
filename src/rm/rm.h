@@ -12,137 +12,101 @@
 using namespace std;
 
 # define RM_EOF (-1)  // end of a scan operator
-#define TABLES_TABLE  "Tables"
-#define COLUMNS_TABLE  "Columns"
+#define TABLES_TABLE "Tables"
+#define COLUMNS_TABLE "Columns"
 
-typedef struct {
-    RID rid;
-    int table_id;
-    string table_name;
-    string file_name;
-} TableRecord;
-
-typedef struct {
-    RID rid;
-    int table_id;
-    string column_name;
-    AttrType column_type;
-    int column_length;
-    int column_position;
-} ColumnRecord;
-
-class DatumType
+class MetaObject
 {
 protected:
-	bool _isNull;
-	void * _val;
+	friend class RelationManager;
+	RID rid;
 public:
-	DatumType() :
-			_isNull(true), _val(NULL)
+
+	virtual void writeTo(void * data)=0;
+
+	virtual void readFrom(void * data)=0;
+
+	virtual ~MetaObject()
 	{
 
 	}
-	virtual ~DatumType()
-	{
-		if (_val != NULL)
-		{
-			delete _val;
-			_val = NULL;
-		}
-	}
-
-	bool isNull()
-	{
-		return _isNull;
-	}
-
-	virtual void getValue(void * val) = 0;
-
-	virtual void setValue(const void * val)=0;
-
-	void reset()
-	{
-		_isNull = true;
-	}
-};
-
-class IntType: public DatumType
-{
-private:
-public:
-	IntType() :
-			DatumType()
-	{
-		_val = new int;
-	}
-	IntType(int val) :
-			DatumType()
-	{
-		_val = new int(val);
-		_isNull = false;
-	}
-
-	void getValue(void * val);
-
-	void setValue(const void * val);
 
 };
 
-class FloatType: public DatumType
+class ColumnRecord: public MetaObject
 {
-private:
-
 public:
-	FloatType() :
-			DatumType()
-	{
-		_val = new float;
-	}
-	FloatType(float val) :
-			DatumType()
-	{
-		_val = new float(val);
-		_isNull = false;
-	}
-	void getValue(void * val);
+	int tableId;
+	string columnName;
+	AttrType columnType;
+	int columnLength;
+	int columnPosition;
 
-	void setValue(const void * val);
+	ColumnRecord() :
+			tableId(0), columnType(TypeInt), columnLength(0), columnPosition(0)
+	{
+	}
+
+	ColumnRecord(int tableId, Attribute attr, int position)
+	{
+		this->tableId = tableId;
+		this->columnName = attr.name;
+		this->columnType = attr.type;
+		this->columnLength = attr.length;
+		this->columnPosition = position;
+	}
+
+	~ColumnRecord()
+	{
+	}
+	ColumnRecord(int tableId, string columnName, AttrType columnType, int columnLength,
+			int columnPosition);
+
+	Attribute toAttribute();
+
+	void writeTo(void * data);
+
+	void readFrom(void * data);
 };
 
-class StringType: public DatumType
+class TableRecord: public MetaObject
 {
 private:
+	vector<ColumnRecord*> columns;
+	friend class RelationManager;
+	friend class Catalog;
 
 public:
-	StringType() :
-			DatumType()
-	{
-		_val = new string;
-	}
-	StringType(string val) :
-			DatumType()
-	{
-		_val = new string(val);
-		_isNull = false;
-	}
-	void getValue(void * val);
+	int tableId;
+	string tableName;
+	string fileName;
 
-	void setValue(const void * val);
+	~TableRecord();
+
+	void addColumn(ColumnRecord* column);
+
+	vector<Attribute> getAttributes();
+
+	vector<string> getAttributeNames();
+
+	const vector<ColumnRecord*>& getColumns();
+
+	void writeTo(void * data);
+
+	void readFrom(void * data);
 };
 
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator
 {
 public:
-	RM_ScanIterator() :
-			rbfm(NULL)
+	RM_ScanIterator()
 	{
+		rbfm = RecordBasedFileManager::instance();
 	}
-	;
 	~RM_ScanIterator()
 	{
 	}
-	;
 
 	// "data" follows the same format as RelationManager::insertTuple()
 	RC getNextTuple(RID &rid, void *data);
@@ -156,59 +120,58 @@ private:
 	RBFM_ScanIterator rbfmsi;
 	RecordBasedFileManager *rbfm;
 	FileHandle fileHandle;
-};
+}
+;
 
 // Placeholder for Catalog class
 class Catalog
 {
 protected:
-    Catalog();
-    ~Catalog();
-    
+	friend class RelationManager;
+	Catalog();
+	~Catalog();
+
+	TableRecord* tablesTable;
+	TableRecord* columnsTable;
+
 public:
+	bool isMetaTable(const string& name);
+
 	static Catalog* instance();
-    // Tested
-    RC createCatalog();
-    RC deleteCatalog();
+	// Tested
+	RC createCatalog();
+	RC deleteCatalog();
 
-    static vector<Attribute> getTableAttributes();
-    static vector<Attribute> getColumnAttributes();
-    static RC getCatalogAttributes(vector<Attribute> &tableAttrs, vector<Attribute> &columnAttrs);
+	void addTable(TableRecord* table);
+	void addColumn(ColumnRecord* column);
+	void deleteTableByName(const string& tableName);
 
-	RC addTableToCatalog(const string &tableName, const vector<Attribute> &attrs);
-    RC getTableID(const string &tableName, int &tid, RID &rid);
-	int getLastTableID();
-    RC getAttributes(const string &tableName, vector<Attribute> &attrs);
-    RC getColumns(const int tableID, vector<Attribute> &attrs, vector<RID> &rids);
-    RC getColumnsFromFile(const int tableID, vector<Attribute> &attrs, vector<RID> &rids);
-    RC deleteTableRecord(RID &rid);
-    RC deleteColumnRecord(RID &rid);
-    
+	TableRecord* getTablesTable();
+	TableRecord* getColumnsTable();
+	TableRecord* getTableById(unsigned id);
+	TableRecord* getTableByName(const string& name);
+	unsigned getNextTableId();
+
 private:
-    static Catalog *_ctlg;
+	static Catalog *_ctlg;
 
-    vector<TableRecord> tableCatalog;
-    vector<ColumnRecord> columnCatalog;
+	vector<TableRecord*> tables;
 
-    RC loadCatalog();
+	unsigned nextTableId;
 
-	byte * tupleBuffer;
-	void clearTuple(vector<DatumType *> & tuple);
-	
-    // hard-coded info
+	RC loadCatalog();
+
+	// hard-coded info
 	vector<Attribute> tableRecordDescriptor;
 	vector<Attribute> columnRecordDescriptor;
-	
-    RC getTableIDs(vector<int> &tids, vector<RID> &rids);
-    RC getTableIDsFromFile(vector<int> &tids, vector<RID> &rids);
+
+	RC getTableIDs(vector<int> &tids, vector<RID> &rids);
+	RC getTableIDsFromFile(vector<int> &tids, vector<RID> &rids);
 };
 
 // Relation Manager
 class RelationManager
 {
-private:
-	void clearTuple(vector<DatumType *> & tuple);
-
 public:
 	static RelationManager* instance();
 
@@ -245,34 +208,29 @@ public:
 			RM_ScanIterator &rm_ScanIterator);
 
 // Extra credit work (10 points)
-public:
 	RC addAttribute(const string &tableName, const Attribute &attr);
 
 	RC dropAttribute(const string &tableName, const string &attributeName);
 
 protected:
 	RelationManager();
+
 	~RelationManager();
 
 private:
-    friend class Catalog;
-
 	static RelationManager *_rm;
-    //Catalog ctlg;
+
+	//Added fields
+	byte * tupleBuffer;
+	Catalog * catalog;
+	RecordBasedFileManager *rbfm;
 
 	// Added methods
+	RC loadCatalog();
 	RC doInsertTuple(const string &tableName, const void *data, RID &rid);
-    RC deleteTuples(const string &tableName, const vector<RID> &rids);
+	RC doDeleteTuple(const string &tableName, const RID& rid);
+	RC doUpdateTuple(const string &tableName, const void * data, const RID& rid);
 
-	void formatRecord(void *record, int &recordSize, const vector<Attribute> &recordDescriptor,
-			const vector<DatumType*> &attrValues);
-	void parseData(vector<DatumType*> &parsedData, void *Data,
-			const vector<Attribute> &recordDescriptor);
-	void parseIteratorData(vector<DatumType*> &parsedData, void *returnedData,
-			const vector<Attribute> &recordDescriptor, const vector<string> &attrNames);
-	bool getBit(unsigned char byte, unsigned pos);
-	void setBit(unsigned char *byte, unsigned pos);
-	void clearBit(unsigned char *byte, unsigned pos);
 };
 
 #endif
