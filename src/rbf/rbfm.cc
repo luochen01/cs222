@@ -171,7 +171,7 @@ void RecordPage::readOverflowMarker(RecordSlot& slot, unsigned& overflowPageNum,
 	read(data, overflowSlotNum, slot.offset + sizeof(unsigned));
 }
 
-void RecordPage::increaseSpace(ushort slotNum, ushort offset)
+void RecordPage::increaseSpace(ushort slotNum, short offset)
 {
 	RecordSlot slot;
 	readRecordSlot(slotNum, slot);
@@ -182,16 +182,15 @@ void RecordPage::increaseSpace(ushort slotNum, ushort offset)
 
 	memmove(data + toOffset, data + fromOffset, size);
 
-	for (int i = slotNum + 1; i < slotSize(); i++)
+	for (int i = 0; i < slotSize(); i++)
 	{
 		RecordSlot existSlot;
 		readRecordSlot(i, existSlot);
-		if (existSlot.offset != 0)
+		if (existSlot.offset != 0 && existSlot.offset < slot.offset)
 		{
 			existSlot.offset -= offset;
 			writeRecordSlot(i, existSlot);
 		}
-
 	}
 
 	recordStart(recordStart() - offset);
@@ -449,7 +448,6 @@ RC RBFM_ScanIterator::getNextRecordWithinPage(Record& record)
 			curPage.readRecord(slot, *pRecordDescriptor, record);
 			return 0;
 		}
-
 	}
 	return -1;
 }
@@ -545,7 +543,8 @@ bool RBFM_ScanIterator::selectVarchar(const void *conditionData, const void *con
 	int size;
 	read(conditionData, size, 0);
 	string left = string((char *) conditionData + 4, (char *) conditionData + 4 + size);
-	string right = *(string *) conditionValue;
+	read(conditionValue, size, 0);
+	string right = string((char*) conditionValue + 4, (char*) conditionValue + 4 + size);
 	int comp = left.compare(right);
 
 	switch (compOp)
@@ -553,13 +552,13 @@ bool RBFM_ScanIterator::selectVarchar(const void *conditionData, const void *con
 	case EQ_OP:	// =
 		return comp == 0;
 	case LT_OP:
-		return comp == -1;
+		return comp < 0;
 	case LE_OP:
-		return comp == 0 || comp == -1;
+		return comp == 0 || comp < 0;
 	case GT_OP:
-		return comp == 1;
+		return comp > 0;
 	case GE_OP:
-		return comp == 1 || comp == 0;
+		return comp > 0 || comp == 0;
 	case NE_OP:
 		return comp != 0;
 	case NO_OP:
@@ -973,7 +972,21 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 	}
 
 	Record record;
-	curPage.readRecord(slot, recordDescriptor, record);
+	if (slot.size != 0)
+	{
+		curPage.readRecord(slot, recordDescriptor, record);
+	}
+	else
+	{
+		//handle overflow record
+		unsigned pageNum, slotNum;
+		curPage.readOverflowMarker(slot, pageNum, slotNum);
+		overflowPage.readPage(fileHandle, pageNum);
+		overflowPage.readRecordSlot(slotNum, slot);
+		overflowPage.readRecord(slot, recordDescriptor, record);
+
+		//overflowPage.invalidate();
+	}
 
 	int index = attributeIndex(recordDescriptor, attributeName);
 	if (!record.isAttributeNull(index))

@@ -130,7 +130,7 @@ public:
 
 	void readOverflowMarker(RecordSlot& slot, unsigned& overflowPageNum, unsigned& overflowSlotNum);
 
-	void increaseSpace(ushort slotNum, ushort offset);
+	void increaseSpace(ushort slotNum, short offset);
 
 	void readRecordSlot(ushort slotNum, RecordSlot& slot);
 
