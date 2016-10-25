@@ -4,252 +4,6 @@
 using namespace std;
 
 RelationManager* RelationManager::_rm = 0;
-Catalog* Catalog::_ctlg = 0;
-
-TableRecord::~TableRecord()
-{
-	for (ColumnRecord* column : columns)
-	{
-		delete column;
-	}
-
-}
-void TableRecord::addColumn(ColumnRecord* column)
-{
-	columns.push_back(column);
-}
-
-vector<Attribute> TableRecord::getAttributes()
-{
-	vector<Attribute> attributes;
-	for (ColumnRecord* c : columns)
-	{
-		attributes.push_back(c->toAttribute());
-	}
-
-	return attributes;
-
-}
-
-vector<string> TableRecord::getAttributeNames()
-{
-	vector<string> names;
-	for (ColumnRecord* c : columns)
-	{
-		names.push_back(c->columnName);
-	}
-	return names;
-}
-
-const vector<ColumnRecord*>& TableRecord::getColumns()
-{
-	return columns;
-}
-
-void TableRecord::writeTo(void * data)
-{
-	int offset = 1;
-	memset(data, 0, 1);
-	offset += write(data, tableId, offset);
-	offset += writeString(data, tableName, offset);
-	offset += writeString(data, fileName, offset);
-}
-
-void TableRecord::readFrom(void * data)
-{
-	int offset = 1;
-
-	offset += read(data, tableId, offset);
-	offset += readString(data, tableName, offset);
-	offset += readString(data, fileName, offset);
-}
-
-ColumnRecord::ColumnRecord(int tableId, string columnName, AttrType columnType, int columnLength,
-		int columnPosition)
-{
-	this->tableId = tableId;
-	this->columnName = columnName;
-	this->columnType = columnType;
-	this->columnLength = columnLength;
-	this->columnPosition = columnPosition;
-}
-
-void ColumnRecord::writeTo(void * data)
-{
-	unsigned offset = 1;
-	memset(data, 0, 1);
-
-	offset += write(data, tableId, offset);
-	offset += writeString(data, columnName, offset);
-	offset += write(data, columnType, offset);
-	offset += write(data, columnLength, offset);
-	offset += write(data, columnPosition, offset);
-
-}
-
-void ColumnRecord::readFrom(void * data)
-{
-	unsigned offset = 1;
-
-	offset += read(data, tableId, offset);
-	offset += readString(data, columnName, offset);
-	offset += read(data, columnType, offset);
-	offset += read(data, columnLength, offset);
-	offset += read(data, columnPosition, offset);
-
-}
-
-Attribute ColumnRecord::toAttribute()
-{
-	Attribute attr;
-	attr.name = this->columnName;
-	attr.length = this->columnLength;
-	attr.type = this->columnType;
-	return attr;
-}
-
-Catalog* Catalog::instance()
-{
-	if (!_ctlg)
-		_ctlg = new Catalog();
-
-	return _ctlg;
-}
-
-Catalog::Catalog()
-{
-	nextTableId = 0;
-	tablesTable = NULL;
-	columnsTable = NULL;
-}
-
-Catalog::~Catalog()
-{
-}
-
-bool Catalog::isMetaTable(const string& name)
-{
-	return name == TABLES_TABLE || name == COLUMNS_TABLE;
-}
-
-TableRecord* Catalog::getTablesTable()
-{
-	return tablesTable;
-}
-
-TableRecord* Catalog::getColumnsTable()
-{
-	return columnsTable;
-}
-
-TableRecord * Catalog::getTableById(unsigned id)
-{
-	for (TableRecord* t : tables)
-	{
-		if (t->tableId == id)
-		{
-			return t;
-		}
-	}
-	return NULL;
-}
-
-TableRecord * Catalog::getTableByName(const string& name)
-{
-	for (TableRecord* t : tables)
-	{
-		if (t->tableName == name)
-		{
-			return t;
-		}
-	}
-	return NULL;
-}
-
-RC Catalog::createCatalog()
-{
-	for (TableRecord * t : tables)
-	{
-		delete t;
-	}
-	tables.clear();
-	tablesTable = new TableRecord();
-	//hard coded tables
-	tablesTable->tableId = 1;
-	tablesTable->tableName = TABLES_TABLE;
-	tablesTable->fileName = TABLES_TABLE;
-	tablesTable->addColumn(new ColumnRecord(1, "table-id", TypeInt, 4, 1));
-	tablesTable->addColumn(new ColumnRecord(1, "table-name", TypeVarChar, 50, 2));
-	tablesTable->addColumn(new ColumnRecord(1, "file-name", TypeVarChar, 50, 3));
-
-	columnsTable = new TableRecord();
-	columnsTable->tableId = 2;
-	columnsTable->tableName = COLUMNS_TABLE;
-	columnsTable->fileName = COLUMNS_TABLE;
-	columnsTable->addColumn(new ColumnRecord(2, "table-id", TypeInt, 4, 1));
-	columnsTable->addColumn(new ColumnRecord(2, "column-name", TypeVarChar, 50, 2));
-	columnsTable->addColumn(new ColumnRecord(2, "column-type", TypeInt, 4, 3));
-	columnsTable->addColumn(new ColumnRecord(2, "column-length", TypeInt, 4, 4));
-	columnsTable->addColumn(new ColumnRecord(2, "column-position", TypeInt, 4, 5));
-
-	tables.push_back(tablesTable);
-	tables.push_back(columnsTable);
-
-	nextTableId = 3;
-
-	return 0;
-}
-
-RC Catalog::deleteCatalog()
-{
-	for (TableRecord * table : tables)
-	{
-		delete table;
-	}
-	tables.clear();
-	return 0;
-}
-
-unsigned Catalog::getNextTableId()
-{
-	return nextTableId++;
-}
-
-void Catalog::addTable(TableRecord* table)
-{
-	if (isMetaTable(table->tableName))
-	{
-		//already hard coded
-		return;
-	}
-	tables.push_back(table);
-}
-
-void Catalog::addColumn(ColumnRecord* column)
-{
-	TableRecord * table = getTableById(column->tableId);
-	assert(table != NULL);
-	if (!isMetaTable(table->tableName))
-	{
-		table->addColumn(column);
-	}
-}
-
-void Catalog::deleteTableByName(const string& tableName)
-{
-	vector<TableRecord*>::iterator it = tables.begin();
-	while (it != tables.end())
-	{
-		TableRecord* t = *it;
-		if (t->tableName == tableName)
-		{
-			delete t;
-			tables.erase(it);
-			return;
-		}
-		it++;
-	}
-}
 
 RelationManager* RelationManager::instance()
 {
@@ -313,7 +67,8 @@ RC RelationManager::loadCatalog()
 		ColumnRecord* column = new ColumnRecord;
 		column->rid = rid;
 		column->readFrom(tupleBuffer);
-		catalog->addColumn(column);
+
+		catalog->loadColumn(column);
 	}
 
 	return 0;
@@ -339,16 +94,14 @@ RC RelationManager::createCatalog()
 	columnsTable->writeTo(tupleBuffer);
 	doInsertTuple(TABLES_TABLE, tupleBuffer, rid);
 
-	for (ColumnRecord* column : tablesTable->columns)
+	//Tables/Columns only have one version
+	for (ColumnRecord* column : tablesTable->currentVersion->columns)
 	{
 		column->writeTo(tupleBuffer);
 		doInsertTuple(COLUMNS_TABLE, tupleBuffer, rid);
 	}
-	for (ColumnRecord* column : columnsTable->columns)
-	{
-		column->writeTo(tupleBuffer);
-		doInsertTuple(COLUMNS_TABLE, tupleBuffer, rid);
-	}
+	writeToColumnsTable(tablesTable->currentVersion->columns);
+	writeToColumnsTable(columnsTable->currentVersion->columns);
 	return 0;
 }
 
@@ -390,7 +143,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 	int pos = 1;
 	for (Attribute attr : attrs)
 	{
-		table->addColumn(new ColumnRecord(table->tableId, attr, pos++));
+		table->addColumn(new ColumnRecord(attr, pos++));
 	}
 
 	//insert into meta table
@@ -399,12 +152,7 @@ RC RelationManager::createTable(const string &tableName, const vector<Attribute>
 	doInsertTuple(TABLES_TABLE, tupleBuffer, rid);
 	table->rid = rid;
 
-	for (ColumnRecord* column : table->columns)
-	{
-		column->writeTo(tupleBuffer);
-		doInsertTuple(COLUMNS_TABLE, tupleBuffer, rid);
-		column->rid = rid;
-	}
+	writeToColumnsTable(table->currentVersion->columns);
 
 	catalog->addTable(table);
 	return 0;
@@ -426,9 +174,13 @@ RC RelationManager::deleteTable(const string &tableName)
 	rbfm->destroyFile(tableName);
 
 	doDeleteTuple(TABLES_TABLE, table->rid);
-	for (ColumnRecord* column : table->columns)
+
+	for (TableVersion* version : table->versions)
 	{
-		doDeleteTuple(COLUMNS_TABLE, column->rid);
+		for (ColumnRecord* column : version->columns)
+		{
+			doDeleteTuple(COLUMNS_TABLE, column->rid);
+		}
 	}
 
 	catalog->deleteTableByName(tableName);
@@ -627,12 +379,52 @@ RC RM_ScanIterator::init(const string &tableName)
 // Extra credit work
 RC RelationManager::dropAttribute(const string &tableName, const string &attributeName)
 {
-	return -1;
+	TableRecord* table = catalog->getTableByName(tableName);
+	if (table == NULL)
+	{
+		return -1;
+	}
+	if (table->getColumnByName(attributeName) == NULL)
+	{
+		return -1;
+	}
+
+	table->createNewVersion();
+	table->deleteColumnByName(attributeName);
+	writeToColumnsTable(table->currentVersion->columns);
+
+	return 0;
 }
 
 // Extra credit work
 RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 {
-	return -1;
+	TableRecord* table = catalog->getTableByName(tableName);
+	if (table == NULL)
+	{
+		return -1;
+	}
+	if (table->getColumnByName(attr.name) != NULL)
+	{
+		return -1;
+	}
+	table->createNewVersion();
+	table->addColumn(new ColumnRecord(attr, table->getColumnsNum()));
+
+	//write columns into Columns table
+	writeToColumnsTable(table->currentVersion->columns);
+
+	return 0;
+}
+
+void RelationManager::writeToColumnsTable(const vector<ColumnRecord*>& columns)
+{
+	RID rid;
+	for (ColumnRecord * column : columns)
+	{
+		column->writeTo(tupleBuffer);
+		doInsertTuple(COLUMNS_TABLE, tupleBuffer, rid);
+		column->rid = rid;
+	}
 }
 

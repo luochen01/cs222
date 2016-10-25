@@ -7,94 +7,12 @@
 #include <cassert>
 #include <algorithm>
 
+#include "catalog.h"
 #include "../rbf/rbfm.h"
 
 using namespace std;
 
 # define RM_EOF (-1)  // end of a scan operator
-#define TABLES_TABLE "Tables"
-#define COLUMNS_TABLE "Columns"
-
-class MetaObject
-{
-protected:
-	friend class RelationManager;
-	RID rid;
-public:
-
-	virtual void writeTo(void * data)=0;
-
-	virtual void readFrom(void * data)=0;
-
-	virtual ~MetaObject()
-	{
-
-	}
-
-};
-
-class ColumnRecord: public MetaObject
-{
-public:
-	int tableId;
-	string columnName;
-	AttrType columnType;
-	int columnLength;
-	int columnPosition;
-
-	ColumnRecord() :
-			tableId(0), columnType(TypeInt), columnLength(0), columnPosition(0)
-	{
-	}
-
-	ColumnRecord(int tableId, Attribute attr, int position)
-	{
-		this->tableId = tableId;
-		this->columnName = attr.name;
-		this->columnType = attr.type;
-		this->columnLength = attr.length;
-		this->columnPosition = position;
-	}
-
-	~ColumnRecord()
-	{
-	}
-	ColumnRecord(int tableId, string columnName, AttrType columnType, int columnLength,
-			int columnPosition);
-
-	Attribute toAttribute();
-
-	void writeTo(void * data);
-
-	void readFrom(void * data);
-};
-
-class TableRecord: public MetaObject
-{
-private:
-	vector<ColumnRecord*> columns;
-	friend class RelationManager;
-	friend class Catalog;
-
-public:
-	int tableId;
-	string tableName;
-	string fileName;
-
-	~TableRecord();
-
-	void addColumn(ColumnRecord* column);
-
-	vector<Attribute> getAttributes();
-
-	vector<string> getAttributeNames();
-
-	const vector<ColumnRecord*>& getColumns();
-
-	void writeTo(void * data);
-
-	void readFrom(void * data);
-};
 
 // RM_ScanIterator is an iteratr to go through tuples
 class RM_ScanIterator
@@ -122,52 +40,6 @@ private:
 	FileHandle fileHandle;
 }
 ;
-
-// Placeholder for Catalog class
-class Catalog
-{
-protected:
-	friend class RelationManager;
-	Catalog();
-	~Catalog();
-
-	TableRecord* tablesTable;
-	TableRecord* columnsTable;
-
-public:
-	bool isMetaTable(const string& name);
-
-	static Catalog* instance();
-	// Tested
-	RC createCatalog();
-	RC deleteCatalog();
-
-	void addTable(TableRecord* table);
-	void addColumn(ColumnRecord* column);
-	void deleteTableByName(const string& tableName);
-
-	TableRecord* getTablesTable();
-	TableRecord* getColumnsTable();
-	TableRecord* getTableById(unsigned id);
-	TableRecord* getTableByName(const string& name);
-	unsigned getNextTableId();
-
-private:
-	static Catalog *_ctlg;
-
-	vector<TableRecord*> tables;
-
-	unsigned nextTableId;
-
-	RC loadCatalog();
-
-	// hard-coded info
-	vector<Attribute> tableRecordDescriptor;
-	vector<Attribute> columnRecordDescriptor;
-
-	RC getTableIDs(vector<int> &tids, vector<RID> &rids);
-	RC getTableIDsFromFile(vector<int> &tids, vector<RID> &rids);
-};
 
 // Relation Manager
 class RelationManager
@@ -230,6 +102,8 @@ private:
 	RC doInsertTuple(const string &tableName, const void *data, RID &rid);
 	RC doDeleteTuple(const string &tableName, const RID& rid);
 	RC doUpdateTuple(const string &tableName, const void * data, const RID& rid);
+
+	void writeToColumnsTable(const vector<ColumnRecord*>& columns);
 
 };
 

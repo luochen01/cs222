@@ -6,7 +6,11 @@
 #include <cstring>
 #include <iostream>
 
+#include "../rm/catalog.h"
+
 RecordBasedFileManager* RecordBasedFileManager::_rbf_manager = 0;
+
+Catalog * Catalog::_ctlg = 0;
 
 int attributeIndex(const vector<Attribute>& recordDescriptor, const string& attributeName)
 {
@@ -20,6 +24,46 @@ int attributeIndex(const vector<Attribute>& recordDescriptor, const string& attr
 	return -1;
 }
 
+int attributeIndex(const vector<Attribute>& recordDescriptor, const Attribute & attr)
+{
+	for (int i = 0; i < recordDescriptor.size(); i++)
+	{
+		if (recordDescriptor[i].name == attr.name)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+int getTableVersion(FileHandle& fileHandle)
+{
+	Catalog * catalog = Catalog::instance();
+	if (!catalog->isInitialized())
+	{
+		return 0;
+	}
+	else
+	{
+		return catalog->getTableCurrentVersionId(fileHandle.getFileName());
+	}
+}
+
+vector<Attribute> getRecordDescriptor(const string& tableName, int version,
+		const vector<Attribute>& recordDescriptor)
+{
+	Catalog* catalog = Catalog::instance();
+	if (!catalog->isInitialized())
+	{
+		return recordDescriptor;
+	}
+	else
+	{
+		TableRecord * table = catalog->getTableByName(tableName);
+		return table->getAttributes(version);
+	}
+}
+
 bool equals(float left, float right)
 {
 	return fabs(left - right) < numeric_limits<float>::epsilon();
@@ -28,6 +72,7 @@ bool equals(float left, float right)
 ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute, const void * from,
 		ushort fromOffset)
 {
+	int size;
 	switch (attribute.type)
 	{
 	case TypeInt:
@@ -36,7 +81,6 @@ ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute,
 		return attribute.length;
 	case TypeVarChar:
 	{
-		int size;
 		read(from, size, fromOffset, sizeof(int));
 		writeBuffer(to, toOffset, from, fromOffset, sizeof(int) + size);
 		return 4 + size;
@@ -46,7 +90,7 @@ ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute,
 }
 
 Record::Record() :
-		data(NULL), pRecordDescriptor(0), recordSize(0)
+		data(NULL), recordSize(0)
 {
 
 }
@@ -56,21 +100,30 @@ Record::~Record()
 
 }
 
-void Record::reset(void * data, const vector<Attribute>& recordDescriptor, ushort recordSize)
+const vector<Attribute>& Record::getRecordDescriptor()
+{
+	return recordDescriptor;
+}
+
+void Record::setRecordDescriptor(const vector<Attribute>& recordDescriptor)
+{
+	this->recordDescriptor = recordDescriptor;
+}
+
+void Record::reset(void * data, ushort recordSize)
 {
 	this->data = (byte *) data;
-	this->pRecordDescriptor = &recordDescriptor;
 	this->recordSize = recordSize;
 }
 
 ushort Record::recordHeaderSize()
 {
-	return pRecordDescriptor->size() * sizeof(ushort);
+	return sizeof(int) + recordDescriptor.size() * sizeof(ushort);
 }
 
 void Record::attributeEndOffset(ushort attrNum, ushort offset)
 {
-	write(data, offset, attrNum * sizeof(ushort));
+	write(data, offset, sizeof(int) + attrNum * sizeof(ushort));
 }
 
 bool Record::isAttributeNull(ushort attrNum)
@@ -94,7 +147,7 @@ ushort Record::attributeStartOffset(ushort attrNum)
 ushort Record::attributeEndOffset(ushort attrNum)
 {
 	ushort offset;
-	read(data, offset, attrNum * sizeof(ushort));
+	read(data, offset, sizeof(int) + attrNum * sizeof(ushort));
 	return offset;
 }
 
@@ -122,7 +175,15 @@ void Record::insertAttribute(ushort attrNum, ushort size)
 	attributeEndOffset(attrNum, startOffset + size);
 }
 
-RecordPage::RecordPage()
+int Record::getVersion()
+{
+	int version;
+	read(data, version, 0);
+	return version;
+}
+
+RecordPage::RecordPage() :
+		pFileHandle(NULL)
 {
 	data = new byte[PAGE_SIZE];
 }
@@ -205,6 +266,7 @@ RC RecordPage::readPage(FileHandle& fileHandle, unsigned pageNum)
 		return -1;
 	}
 
+	this->pFileHandle = &fileHandle;
 	return 0;
 }
 
@@ -317,13 +379,19 @@ void RecordPage::updateRecord(const vector<Attribute>& recordDescriptor, Record&
 	slot.size = newRecordSize;
 	writeRecordSlot(slotNum, slot);
 
-	readRecord(slot, recordDescriptor, record);
+	record.reset(this->data + slot.offset, slot.size);
+	record.setRecordDescriptor(recordDescriptor);
 }
 
 void RecordPage::readRecord(const RecordSlot& slot, const vector<Attribute>& recordDescriptor,
 		Record& record)
 {
-	record.reset(this->data + slot.offset, recordDescriptor, slot.size);
+
+	record.reset(this->data + slot.offset, slot.size);
+	int version = record.getVersion();
+	vector<Attribute> oldRecordDescriptor = getRecordDescriptor(pFileHandle->getFileName(), version,
+			recordDescriptor);
+	record.setRecordDescriptor(oldRecordDescriptor);
 
 }
 
@@ -337,10 +405,10 @@ void RecordPage::insertRecord(const vector<Attribute>& recordDescriptor, Record&
 	slot.size = recordSize;
 	writeRecordSlot(slotNum, slot);
 
-	record.reset(this->data + slot.offset, recordDescriptor, recordSize);
+	record.reset(this->data + slot.offset, recordSize);
+	record.setRecordDescriptor(recordDescriptor);
 
 	recordStart(slot.offset);
-
 }
 
 ushort RecordPage::emptySpace()
@@ -381,7 +449,6 @@ RBFM_ScanIterator::RBFM_ScanIterator()
 	pFileHandle = NULL;
 	compOp = EQ_OP;
 	conditionValue = NULL;
-	conditionNum = 0;
 	pRecordDescriptor = NULL;
 
 }
@@ -446,6 +513,7 @@ RC RBFM_ScanIterator::getNextRecordWithinPage(Record& record)
 		if (slot.offset != 0 && slot.size != 0)
 		{
 			curPage.readRecord(slot, *pRecordDescriptor, record);
+
 			return 0;
 		}
 	}
@@ -580,31 +648,40 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 	Record record;
 	while (getNextRecord(record) == 0)
 	{
+		int version = record.getVersion();
+		vector<Attribute> oldRecordDescriptor = getRecordDescriptor(pFileHandle->getFileName(),
+				version, *pRecordDescriptor);
 		if (compOp != NO_OP)
 		{
+			int conditionNum = attributeIndex(oldRecordDescriptor, conditionAttribute);
 			//check this record
-			void *conditionData = record.attribute(conditionNum);
-
-			if (!select(conditionData, conditionValue, compOp, (*pRecordDescriptor)[conditionNum]))
+			void *conditionData = NULL;
+			if (conditionNum >= 0)
+			{
+				conditionData = record.attribute(conditionNum);
+			}
+			if (!select(conditionData, conditionValue, compOp, oldRecordDescriptor[conditionNum]))
 			{
 				continue;
 			}
 		}
 
-		ushort recordOffset = ceil((double) projectNums.size() / 8);
+		ushort recordOffset = ceil((double) attributeNames.size() / 8);
+		memset(data, 0, recordOffset);
 		//project data
-		for (int i = 0; i < projectNums.size(); i++)
+		for (int i = 0; i < attributeNames.size(); i++)
 		{
-			int num = projectNums[i];
-			void * attributeData = record.attribute(num);
-			if (attributeData == NULL)
+			int newIndex = attributeIndex(*pRecordDescriptor, attributeNames[i]);
+			int oldIndex = attributeIndex(oldRecordDescriptor, (*pRecordDescriptor)[newIndex]);
+			if (oldIndex < 0 || record.isAttributeNull(oldIndex))
 			{
 				setAttrNull(data, i, true);
 			}
 			else
 			{
+				void * attributeData = record.attribute(oldIndex);
 				setAttrNull(data, i, false);
-				recordOffset += copyAttributeData(data, recordOffset, (*pRecordDescriptor)[num],
+				recordOffset += copyAttributeData(data, recordOffset, oldRecordDescriptor[oldIndex],
 						attributeData, 0);
 			}
 		}
@@ -642,9 +719,10 @@ RecordBasedFileManager::~RecordBasedFileManager()
 }
 
 void RecordBasedFileManager::fillRecord(const vector<Attribute>& recordDescriptor, Record& record,
-		const void *data)
+		int version, const void *data)
 {
 	memset(record.getData(), 0, record.getRecordSize());
+	write(record.getData(), version, 0);
 
 	ushort recordOffset = ceil((double) recordDescriptor.size() / 8);
 
@@ -656,7 +734,6 @@ void RecordBasedFileManager::fillRecord(const vector<Attribute>& recordDescripto
 		{
 			void * attrData = record.attribute(i);
 			attributeSize = copyAttributeData(attrData, 0, attr, data, recordOffset);
-
 		}
 		record.insertAttribute(i, attributeSize);
 		recordOffset += attributeSize;
@@ -668,24 +745,23 @@ void RecordBasedFileManager::fillRecord(const vector<Attribute>& recordDescripto
 void RecordBasedFileManager::fillData(const vector<Attribute> & recordDescriptor, Record& record,
 		void * data)
 {
-
+	const vector<Attribute>& oldRecordDescriptor = record.getRecordDescriptor();
 	ushort recordOffset = ceil((double) recordDescriptor.size() / 8);
-
+	memset(data, 0, recordOffset);
 	for (int i = 0; i < recordDescriptor.size(); i++)
 	{
-		if (record.isAttributeNull(i))
+		const Attribute& attr = recordDescriptor[i];
+		int oldIndex = attributeIndex(oldRecordDescriptor, attr);
+		if (oldIndex == -1 || record.isAttributeNull(oldIndex))
 		{
 			setAttrNull(data, i, true);
 		}
 		else
 		{
 			setAttrNull(data, i, false);
-			void* attrData = record.attribute(i);
-			const Attribute& attribute = recordDescriptor[i];
-
-			recordOffset += copyAttributeData(data, recordOffset, attribute, attrData, 0);
+			void* attrData = record.attribute(oldIndex);
+			recordOffset += copyAttributeData(data, recordOffset, attr, attrData, 0);
 		}
-
 	}
 }
 
@@ -724,8 +800,10 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle,
 
 	curPage.insertRecord(recordDescriptor, record, recordSize, rid.slotNum);
 
+	int version = getTableVersion(fileHandle);
+
 //parse input data, and insert into record
-	fillRecord(recordDescriptor, record, data);
+	fillRecord(recordDescriptor, record, version, data);
 
 //finish append record
 	fileHandle.writePage(rid.pageNum, curPage.data);
@@ -762,7 +840,6 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 	if (slot.size != 0)
 	{
 		curPage.readRecord(slot, recordDescriptor, record);
-		fillData(recordDescriptor, record, data);
 	}
 	else
 	{
@@ -772,11 +849,9 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 		overflowPage.readPage(fileHandle, pageNum);
 		overflowPage.readRecordSlot(slotNum, slot);
 		overflowPage.readRecord(slot, recordDescriptor, record);
-		fillData(recordDescriptor, record, data);
-
-		//overflowPage.invalidate();
 	}
-
+	int version = record.getVersion();
+	fillData(recordDescriptor, record, data);
 	return 0;
 
 }
@@ -791,7 +866,7 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle,
 
 	if (rid.slotNum >= curPage.slotSize())
 	{
-		//check slot size
+//check slot size
 		logError("Fail to delete record, because " + rid.slotNum +" is not a valid slot number!");
 		return -1;
 	}
@@ -800,7 +875,7 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle,
 	curPage.readRecordSlot(rid.slotNum, slot);
 	if (slot.offset == 0)
 	{
-		//check slot exists
+//check slot exists
 		logError("Fail to delete record, because " + rid.slotNum + " is not a valid slot number!");
 		return -1;
 	}
@@ -812,12 +887,12 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle,
 	}
 	else
 	{
-		//handle overflow record
+//handle overflow record
 		unsigned pageNum, slotNum;
 		curPage.readOverflowMarker(slot, pageNum, slotNum);
 		overflowPage.readPage(fileHandle, pageNum);
 		overflowPage.deleteRecord(slotNum);
-		//overflowPage.invalidate();
+//overflowPage.invalidate();
 		fileHandle.writePage(pageNum, overflowPage.data);
 
 		curPage.deleteRecord(rid.slotNum);
@@ -838,7 +913,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle,
 
 	if (rid.slotNum >= curPage.slotSize())
 	{
-		//check slot size
+//check slot size
 		logError("Fail to update record, because " + rid.slotNum +" is not a valid slot number!");
 		return -1;
 	}
@@ -847,7 +922,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle,
 	curPage.readRecordSlot(rid.slotNum, slot);
 	if (slot.offset == 0)
 	{
-		//check slot exists
+//check slot exists
 		logError("Fail to update record, because " + rid.slotNum + " is not a valid slot number!");
 		return -1;
 	}
@@ -869,7 +944,8 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle,
 			unsigned overflowSlotNum;
 			Record record;
 			overflowPage.insertRecord(recordDescriptor, record, newRecordSize, overflowSlotNum);
-			fillRecord(recordDescriptor, record, data);
+			int version = getTableVersion(fileHandle);
+			fillRecord(recordDescriptor, record, version, data);
 			fileHandle.writePage(overflowPageNum, overflowPage.data);
 
 			//invalidate cached pages
@@ -883,7 +959,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle,
 	}
 	else
 	{
-		//handle overflow record
+//handle overflow record
 		unsigned overflowPageNum, overflowSlotNum;
 		curPage.readOverflowMarker(slot, overflowPageNum, overflowSlotNum);
 		overflowPage.readPage(fileHandle, overflowPageNum);
@@ -908,7 +984,8 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle,
 			{
 				Record record;
 				overflowPage.insertRecord(recordDescriptor, record, newRecordSize, overflowSlotNum);
-				fillRecord(recordDescriptor, record, data);
+				int version = getTableVersion(fileHandle);
+				fillRecord(recordDescriptor, record, version, data);
 				fileHandle.writePage(overflowPageNum, overflowPage.data);
 				//overflowPage.invalidate();
 
@@ -940,7 +1017,9 @@ void RecordBasedFileManager::updateRecordWithinPage(FileHandle& fileHandle, Reco
 {
 	Record record;
 	page.updateRecord(recordDescriptor, record, newRecordSize, slotNum);
-	fillRecord(recordDescriptor, record, data);
+
+	int version = getTableVersion(fileHandle);
+	fillRecord(recordDescriptor, record, version, data);
 	fileHandle.writePage(pageNum, page.data);
 }
 
@@ -956,7 +1035,7 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 
 	if (rid.slotNum >= curPage.slotSize())
 	{
-		//check slot size
+//check slot size
 		logError("Fail to read record attribute, because " + rid.slotNum +" is not a valid slot number!");
 		return -1;
 	}
@@ -966,7 +1045,7 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 
 	if (slot.offset == 0)
 	{
-		//check slot exists
+//check slot exists
 		logError("Fail to read record attribute, because " + rid.slotNum + " is not a valid slot number!");
 		return -1;
 	}
@@ -978,26 +1057,29 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle,
 	}
 	else
 	{
-		//handle overflow record
+//handle overflow record
 		unsigned pageNum, slotNum;
 		curPage.readOverflowMarker(slot, pageNum, slotNum);
 		overflowPage.readPage(fileHandle, pageNum);
 		overflowPage.readRecordSlot(slotNum, slot);
 		overflowPage.readRecord(slot, recordDescriptor, record);
 
-		//overflowPage.invalidate();
+//overflowPage.invalidate();
 	}
-
-	int index = attributeIndex(recordDescriptor, attributeName);
-	if (!record.isAttributeNull(index))
+	int version = record.getVersion();
+	vector<Attribute> oldRecordDescriptor = getRecordDescriptor(fileHandle.getFileName(), version,
+			recordDescriptor);
+	memset(data, 0, 1);
+	int index = attributeIndex(oldRecordDescriptor, attributeName);
+	if (index == -1 || record.isAttributeNull(index))
+	{
+		setAttrNull(data, 0, true);
+	}
+	else
 	{
 		setAttrNull(data, 0, false);
 		void * attrData = record.attribute(index);
 		copyAttributeData(data, (ushort) 1, recordDescriptor[index], attrData, (ushort) 0);
-	}
-	else
-	{
-		setAttrNull(data, 0, true);
 	}
 
 	return 0;
@@ -1012,18 +1094,12 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
 		RBFM_ScanIterator &rbfm_ScanIterator)
 {
 	rbfm_ScanIterator.compOp = compOp;
-	rbfm_ScanIterator.conditionNum = attributeIndex(recordDescriptor, conditionAttribute);
+	rbfm_ScanIterator.conditionAttribute = conditionAttribute;
 	rbfm_ScanIterator.conditionValue = value;
 
 	rbfm_ScanIterator.pFileHandle = &fileHandle;
 	rbfm_ScanIterator.pRecordDescriptor = &recordDescriptor;
-	rbfm_ScanIterator.projectNums.clear();
-	for (string name : attributeNames)
-	{
-		rbfm_ScanIterator.projectNums.push_back(attributeIndex(recordDescriptor, name));
-	}
-
-	sort(rbfm_ScanIterator.projectNums.begin(), rbfm_ScanIterator.projectNums.end());
+	rbfm_ScanIterator.attributeNames = attributeNames;
 
 	rbfm_ScanIterator.init();
 	return 0;
@@ -1031,10 +1107,14 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
 
 RC RecordBasedFileManager::printRecord(const vector<Attribute> & recordDescriptor, const void *data)
 {
+	int ivalue;
+	float fvalue;
+	int size;
+	string svalue;
 	ushort offset = ceil((double) recordDescriptor.size() / 8);
 	for (int i = 0; i < recordDescriptor.size(); i++)
 	{
-		const Attribute& attr = recordDescriptor[i];
+		Attribute attr = recordDescriptor[i];
 		cout << attr.name << ": ";
 		if (isAttrNull(data, i))
 		{
@@ -1046,7 +1126,6 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> & recordDescripto
 			{
 			case TypeInt:
 			{
-				int ivalue;
 				read(data, ivalue, offset, attr.length);
 				cout << ivalue;
 				offset += attr.length;
@@ -1054,7 +1133,6 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> & recordDescripto
 			}
 			case TypeReal:
 			{
-				float fvalue;
 				read(data, fvalue, offset, attr.length);
 				cout << fvalue;
 				offset += attr.length;
@@ -1062,10 +1140,8 @@ RC RecordBasedFileManager::printRecord(const vector<Attribute> & recordDescripto
 			}
 			case TypeVarChar:
 			{
-				int size;
 				read(data, size, offset, sizeof(int));
-
-				string svalue((byte*) data + offset + 4,
+				svalue = string((byte*) data + offset + 4,
 						(byte*) data + offset + sizeof(int) + size);
 				cout << svalue;
 				offset = offset + 4 + size;
@@ -1093,14 +1169,14 @@ unsigned RecordBasedFileManager::locatePage(RecordPage& page, ushort recordSize,
 {
 	if (fileHandle.pages > 0)
 	{
-		//first check the last page
+//first check the last page
 		page.readPage(fileHandle, fileHandle.pages - 1);
 		if (page.emptySpace() > recordSize + RECORD_SLOT_SIZE)
 		{
 			return fileHandle.pages - 1;
 		}
 
-		//go through all the pages
+//go through all the pages
 		for (int i = 0; i < fileHandle.pages - 1; i++)
 		{
 			page.readPage(fileHandle, i);
@@ -1124,8 +1200,9 @@ unsigned RecordBasedFileManager::locatePage(RecordPage& page, ushort recordSize,
 ushort RecordBasedFileManager::RecordSize(const vector<Attribute>& recordDescriptor,
 		const void * src)
 {
-
-	ushort size = (recordDescriptor.size()) * sizeof(ushort);
+	int varSize;
+//now added a version id
+	ushort size = sizeof(int) + (recordDescriptor.size()) * sizeof(ushort);
 	ushort srcOffset = ceil((double) recordDescriptor.size() / 8);
 	for (int i = 0; i < recordDescriptor.size(); i++)
 	{
@@ -1143,7 +1220,6 @@ ushort RecordBasedFileManager::RecordSize(const vector<Attribute>& recordDescrip
 			break;
 		case TypeVarChar:
 		{
-			int varSize;
 			read(src, varSize, srcOffset, sizeof(int));
 			size = size + varSize + sizeof(int);
 			srcOffset = srcOffset + varSize + sizeof(int);

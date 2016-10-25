@@ -65,7 +65,7 @@ class Record
 private:
 	byte * data;
 
-	const vector<Attribute> * pRecordDescriptor;
+	vector<Attribute> recordDescriptor;
 
 	ushort recordSize;
 
@@ -84,7 +84,11 @@ public:
 		return data;
 	}
 
-	void reset(void * data, const vector<Attribute>& recordDescriptor, ushort recordSize);
+	void setRecordDescriptor(const vector<Attribute>& recordDescriptor);
+
+	const vector<Attribute>& getRecordDescriptor();
+
+	void reset(void * data, ushort recordSize);
 
 	ushort recordHeaderSize();
 
@@ -101,6 +105,8 @@ public:
 	void * attribute(ushort attrNum);
 
 	void insertAttribute(ushort attrNum, ushort size);
+
+	int getVersion();
 };
 
 const ushort RECORD_SLOT_SIZE = sizeof(ushort) * 2;
@@ -119,6 +125,7 @@ const ushort OVERFLOW_MARKER_SIZE = sizeof(unsigned) * 2;
 class RecordPage
 {
 private:
+	FileHandle * pFileHandle;
 
 public:
 
@@ -223,8 +230,8 @@ private:
 	FileHandle* pFileHandle;
 
 	const vector<Attribute>* pRecordDescriptor;
-	unsigned conditionNum;
-	vector<unsigned> projectNums;
+	string conditionAttribute;
+	vector<string> attributeNames;
 	CompOp compOp;
 	const void *conditionValue;
 
@@ -270,7 +277,8 @@ private:
 
 	unsigned locatePage(RecordPage& page, ushort recordSize, FileHandle& fileHandle);
 
-	void fillRecord(const vector<Attribute>& recordDescriptor, Record& record, const void *data);
+	void fillRecord(const vector<Attribute>& recordDescriptor, Record& record, int version,
+			const void *data);
 
 	void fillData(const vector<Attribute> & recordDescriptor, Record& record, void * data);
 

@@ -141,6 +141,8 @@ private:
 
 	unsigned pageOffset(int pageNum);
 
+	string fileName;
+
 public:
 	unsigned pages;
 
@@ -154,6 +156,8 @@ public:
 	FileHandle();                                                         // Default constructor
 
 	~FileHandle();                                                        // Destructor
+
+	const string& getFileName();
 
 	RC readPage(PageNum pageNum, void *data);                             // Get a specific page
 	RC writePage(PageNum pageNum, const void *data);                      // Write a specific page

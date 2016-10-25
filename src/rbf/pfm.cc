@@ -195,6 +195,7 @@ RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle)
 		logError("Fail to open file: " + fileName + ", because the fileHandle is already bounded to other file!");
 		return -1;
 	}
+	fileHandle.fileName = fileName;
 	fileHandle.opened = true;
 	fileHandle.fs.open(fileName, ios::in | ios::out | ios::binary | ios::ate);
 	fileHandle.fs.seekg(0);
@@ -225,6 +226,11 @@ FileHandle::FileHandle() :
 FileHandle::~FileHandle()
 {
 
+}
+
+const string& FileHandle::getFileName()
+{
+	return fileName;
 }
 
 RC FileHandle::readPage(PageNum pageNum, void *data)
