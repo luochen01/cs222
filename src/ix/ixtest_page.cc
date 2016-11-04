@@ -9,18 +9,15 @@
 
 IndexManager *indexManager;
 
-RC testCase_Page()
+RC testCase_LeafPage()
 {
 	void * data = malloc(PAGE_SIZE);
 	memset(data, 0, PAGE_SIZE);
 
 	LeafPage leafPage(data);
-	leafPage.initialize();
+	leafPage.reset();
 
-	leafPage.sibling(10);
-
-	PageNum siblingPage = leafPage.sibling();
-	assert(siblingPage == 10);
+	leafPage.setSibling(10);
 
 	BTreeKey key1, key2, key3, key4;
 
@@ -50,37 +47,98 @@ RC testCase_Page()
 	leafPage.insertKey(key2, attr);
 	leafPage.insertKey(key4, attr);
 
-	BTreeKey key;
-	leafPage.getKey(1, key, attr);
-	assert(key.compare(key1, attr) == 0);
+	leafPage.deleteKey(key4, attr);
+	leafPage.deleteKey(key1, attr);
 
-	leafPage.getKey(2, key, attr);
+	leafPage.flush(attr);
+
+	LeafPage newLeafPage(data);
+	newLeafPage.initialize(attr);
+
+	BTreeKey key;
+	assert(newLeafPage.getNumEntries() == 2);
+
+	newLeafPage.getKey(1, key);
 	assert(key.compare(key2, attr) == 0);
 
-	leafPage.getKey(3, key, attr);
+	newLeafPage.getKey(2, key);
 	assert(key.compare(key3, attr) == 0);
 
-	leafPage.getKey(4, key, attr);
-	assert(key.compare(key4, attr) == 0);
+	assert(newLeafPage.getSibling() == 10);
 
-	int numEntry = leafPage.numEntry();
-	assert(numEntry == 4);
-
-	leafPage.deleteKey(key4, attr);
-	leafPage.deleteKey(key2, attr);
-	leafPage.deleteKey(key1, attr);
-	leafPage.deleteKey(key3, attr);
-
-	assert(leafPage.numEntry() == 0);
-
-	cout << "Test Case Page Success.";
+	cout << "Test Case Leaf Page Success." << endl;
 
 	return 0;
 }
 
+RC testCase_InternalPage()
+{
+	void * data = malloc(PAGE_SIZE);
+	memset(data, 0, PAGE_SIZE);
+
+	InternalPage page(data);
+	page.reset();
+
+	BTreeKey key1, key2, key3, key4;
+
+	key1.value = new int(2);
+	key1.rid.pageNum = 1;
+	key1.rid.slotNum = 5;
+
+	key2.value = new int(5);
+	key2.rid.pageNum = 1;
+	key2.rid.slotNum = 10;
+
+	key3.value = new int(9);
+	key3.rid.pageNum = 1;
+	key3.rid.slotNum = 6;
+
+	key4.value = new int(10);
+	key4.rid.pageNum = 1;
+	key4.rid.slotNum = 8;
+
+	Attribute attr;
+	attr.length = 4;
+	attr.type = TypeInt;
+	attr.name = "Age";
+
+	//only used for test
+	page.getPageNums().push_back(0);
+
+	page.insertKey(key1, 1, attr);
+	page.insertKey(key3, 3, attr);
+	page.insertKey(key2, 2, attr);
+	page.insertKey(key4, 4, attr);
+
+	page.deleteKey(key4, attr);
+	page.deleteKey(key1, attr);
+
+	page.flush(attr);
+
+	InternalPage newPage(data);
+	newPage.initialize(attr);
+
+	BTreeKey key;
+	PageNum pageNum;
+	assert(newPage.getNumEntries() == 2);
+
+	newPage.getKey(1, key);
+	newPage.getPageNum(1, pageNum);
+	assert(key.compare(key2, attr) == 0 && pageNum == 2);
+
+	newPage.getKey(2, key);
+	newPage.getPageNum(2, pageNum);
+	assert(key.compare(key3, attr) == 0 && pageNum == 3);
+
+	cout << "Test Case Internal Page Success." << endl;
+
+	return 0;
+
+}
+
 int main()
 {
-	testCase_Page();
-
+	testCase_LeafPage();
+	testCase_InternalPage();
 }
 

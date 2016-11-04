@@ -36,7 +36,7 @@ public:
 };
 
 /**
- * bool isLeaf, ushort numEntry, ushort nextFreeSpace, unsigned sibling(for leaf),
+ * bool isLeaf, ushort numEntry, ushort spaceUsed, unsigned sibling(for leaf),
  * page0, key1, page1, key2, page2, ..., key n, page n
  *nextFreeSpace points to the end of page n+1
  */
@@ -45,7 +45,17 @@ class BTreePage
 protected:
 	void * data;
 
+	vector<BTreeKey> keys;
+
+	ushort numEntries;
+
+	ushort spaceUsed;
+
 	const int PAGE_HEADER_SIZE;
+
+	static const int NUM_ENTRIES_OFFSET = sizeof(bool);
+
+	static const int SPACE_USED_OFFSET = NUM_ENTRIES_OFFSET + sizeof(ushort);
 
 	ushort readKey(BTreeKey& key, ushort offset, const Attribute& attr);
 
@@ -54,19 +64,13 @@ protected:
 public:
 	BTreePage(void * data, int headerSize);
 
-	virtual void initialize();
+	virtual void initialize(const Attribute& attr);
 
-	void getKey(int num, BTreeKey& key, const Attribute& attr);
+	virtual void flush(const Attribute& attr);
 
-	virtual ushort getKeyOffset(int num, const Attribute& attr) = 0;
+	virtual void reset();
 
-	ushort numEntry();
-
-	void numEntry(ushort value);
-
-	ushort nextFreeSpace();
-
-	void nextFreeSpace(ushort value);
+	void getKey(int num, BTreeKey& key);
 
 	virtual bool isLeaf() = 0;
 
@@ -74,8 +78,6 @@ public:
 	bool isFull(const Attribute& attr, const void* value);
 
 	bool isHalfFull();
-
-	void increaseSpace(ushort offset, int size);
 
 	ushort keySize(ushort offset, const Attribute& attr)
 	{
@@ -89,37 +91,44 @@ public:
 
 	}
 
+	ushort getSpaceUsed()
+	{
+		return spaceUsed;
+	}
+
+	ushort getNumEntries()
+	{
+		return numEntries;
+	}
+
 };
 
 class InternalPage: public BTreePage
 {
 protected:
+	vector<PageNum> pageNums;
+
 	ushort readPageNum(PageNum& pageNum, ushort offset);
 
 	ushort writePageNum(PageNum pageNum, ushort offsert);
 
-	ushort InternalPage::writeEntry(const BTreeKey& key, PageNum pageNum, ushort offset,
-			const Attribute& attr);
+	ushort writeEntry(const BTreeKey& key, PageNum pageNum, ushort offset, const Attribute& attr);
 
-	ushort InternalPage::readEntry(BTreeKey& key, PageNum pageNum, ushort offset,
-			const Attribute& attr);
+	ushort readEntry(BTreeKey& key, PageNum& pageNum, ushort offset, const Attribute& attr);
+
+	ushort entrySize(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
 
 public:
 
 	InternalPage(void * data);
 
-	void initialize();
+	void initialize(const Attribute& attr);
 
-	void getPageNum(int num, PageNum& pageNum, const Attribute& attr);
+	void reset();
 
-	/**
-	 * An entry logically contains a page num and a key
-	 */
-	ushort getEntryOffset(int num, const Attribute& attr);
+	void flush(const Attribute& attr);
 
-	ushort getKeyOffset(int num, const Attribute& attr);
-
-	ushort getPageNumOffset(int num, const Attribute& attr);
+	void getPageNum(int num, PageNum& pageNum);
 
 	void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
 
@@ -149,22 +158,29 @@ public:
 
 	}
 
+	vector<PageNum>& getPageNums()
+	{
+		return pageNums;
+	}
+
 };
 
 class LeafPage: public BTreePage
 {
 protected:
+	static const int SIBLING_OFFSET = SPACE_USED_OFFSET + sizeof(ushort);
+
+	PageNum siblingPage;
+
 public:
 
 	LeafPage(void * data);
 
-	void initialize();
+	void initialize(const Attribute& attr);
 
-	PageNum sibling();
+	void reset();
 
-	void sibling(PageNum pageNum);
-
-	ushort getKeyOffset(int num, const Attribute& attr);
+	void flush(const Attribute& attr);
 
 	void insertKey(const BTreeKey& key, const Attribute& attr);
 
@@ -179,6 +195,17 @@ public:
 	{
 
 	}
+
+	PageNum getSibling()
+	{
+		return siblingPage;
+	}
+
+	void setSibling(PageNum pageNum)
+	{
+		this->siblingPage = pageNum;
+	}
+
 };
 
 class IndexManager

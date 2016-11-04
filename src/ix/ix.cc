@@ -102,13 +102,30 @@ BTreePage::BTreePage(void * data, int headerSize) :
 		PAGE_HEADER_SIZE(headerSize)
 {
 	this->data = data;
+	numEntries = 0;
+	spaceUsed = 0;
 }
 
-void BTreePage::initialize()
+void BTreePage::reset()
 {
-	numEntry(0);
-	nextFreeSpace(PAGE_HEADER_SIZE);
+	numEntries = 0;
+	spaceUsed = PAGE_HEADER_SIZE;
+	keys.clear();
 
+	//insert a dummy key here
+	keys.push_back(BTreeKey());
+}
+
+void BTreePage::initialize(const Attribute& attr)
+{
+	read(data, numEntries, NUM_ENTRIES_OFFSET);
+	read(data, spaceUsed, SPACE_USED_OFFSET);
+}
+
+void BTreePage::flush(const Attribute& attr)
+{
+	write(data, numEntries, NUM_ENTRIES_OFFSET);
+	write(data, spaceUsed, SPACE_USED_OFFSET);
 }
 
 ushort BTreePage::readKey(BTreeKey& key, ushort offset, const Attribute& attr)
@@ -130,54 +147,22 @@ ushort BTreePage::writeKey(const BTreeKey& key, ushort offset, const Attribute& 
 	return newOffset - offset;
 }
 
-void BTreePage::getKey(int num, BTreeKey& key, const Attribute& attr)
+void BTreePage::getKey(int num, BTreeKey& key)
 {
-	ushort offset = getKeyOffset(num, attr);
-	readKey(key, offset, attr);
-}
-
-ushort BTreePage::numEntry()
-{
-	ushort result;
-	read(data, result, sizeof(bool));
-	return result;
-}
-
-void BTreePage::numEntry(ushort value)
-{
-	write(data, value, sizeof(bool));
-}
-
-ushort BTreePage::nextFreeSpace()
-{
-	ushort result;
-	read(data, result, sizeof(bool) + sizeof(ushort));
-	return result;
-}
-
-void BTreePage::nextFreeSpace(ushort value)
-{
-	write(data, value, sizeof(bool) + sizeof(ushort));
+	key = keys[num];
 }
 
 //is there enough space to hold a new entry?
 bool BTreePage::isFull(const Attribute& attr, const void* value)
 {
 	//a new key (value + RID) + page num
-	return nextFreeSpace() + attributeSize(attr, value) + 2 * sizeof(ushort) + sizeof(unsigned)
+	return spaceUsed + attributeSize(attr, value) + 2 * sizeof(ushort) + sizeof(unsigned)
 			< PAGE_SIZE;
 }
 
 bool BTreePage::isHalfFull()
 {
-	return nextFreeSpace() * 2 > PAGE_SIZE;
-}
-
-void BTreePage::increaseSpace(ushort offset, int size)
-{
-	ushort freeSpace = nextFreeSpace();
-	memmove((byte*) data + offset + size, (byte*) data + offset, freeSpace - offset);
-	nextFreeSpace(freeSpace + size);
+	return spaceUsed * 2 > PAGE_SIZE;
 }
 
 InternalPage::InternalPage(void * data) :
@@ -185,13 +170,52 @@ InternalPage::InternalPage(void * data) :
 {
 }
 
-void InternalPage::initialize()
+ushort InternalPage::entrySize(const BTreeKey& key, PageNum pageNum, const Attribute& attr)
 {
-	BTreePage::initialize();
+	return key.keySize(attr) + sizeof(PageNum);
+}
 
-	//set isLeaf
+void InternalPage::initialize(const Attribute& attr)
+{
+	BTreePage::initialize(attr);
+
+	//load keys and page nums
+	PageNum pageNum;
+	BTreeKey key;
+
+	ushort offset = PAGE_HEADER_SIZE;
+	offset += readPageNum(pageNum, offset);
+	pageNums.push_back(pageNum);
+	//push a dummy key here
+	keys.push_back(key);
+
+	for (int i = 1; i <= numEntries; i++)
+	{
+		offset += readEntry(key, pageNum, offset, attr);
+		pageNums.push_back(pageNum);
+		keys.push_back(key);
+	}
+
+}
+
+void InternalPage::reset()
+{
+	BTreePage::reset();
+}
+
+void InternalPage::flush(const Attribute& attr)
+{
+	BTreePage::flush(attr);
+
 	write(data, (bool) false, 0);
 
+	ushort offset = PAGE_HEADER_SIZE;
+	offset += writePageNum(pageNums[0], offset);
+
+	for (int i = 1; i <= numEntries; i++)
+	{
+		offset += writeEntry(keys[i], pageNums[i], offset, attr);
+	}
 }
 
 ushort InternalPage::readPageNum(PageNum& pageNum, ushort offset)
@@ -213,7 +237,7 @@ ushort InternalPage::writeEntry(const BTreeKey& key, PageNum pageNum, ushort off
 	return newOffset - offset;
 }
 
-ushort InternalPage::readEntry(BTreeKey& key, PageNum pageNum, ushort offset, const Attribute& attr)
+ushort InternalPage::readEntry(BTreeKey& key, PageNum& pageNum, ushort offset, const Attribute& attr)
 {
 	ushort newOffset = offset;
 	newOffset += readKey(key, newOffset, attr);
@@ -221,186 +245,156 @@ ushort InternalPage::readEntry(BTreeKey& key, PageNum pageNum, ushort offset, co
 	return newOffset - offset;
 }
 
-void InternalPage::getPageNum(int num, PageNum& pageNum, const Attribute& attr)
+void InternalPage::getPageNum(int num, PageNum& pageNum)
 {
-	if (num > numEntry())
-	{
-		logError("Invalid entry num "+ num +", since the page only has "+numEntry()+" entries");
-		return;
-	}
-
-	ushort offset = getPageNumOffset(num, attr);
-	readPageNum(pageNum, offset);
-}
-
-ushort InternalPage::getKeyOffset(int num, const Attribute& attr)
-{
-	return getEntryOffset(num, attr);
-}
-
-ushort InternalPage::getPageNumOffset(int num, const Attribute& attr)
-{
-	if (num == 0)
-	{
-		return PAGE_HEADER_SIZE;
-	}
-
-	ushort offset = getEntryOffset(num, attr);
-	return offset + keySize(offset, attr);
+	pageNum = pageNums[num];
 }
 
 void InternalPage::updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr)
 {
-	BTreeKey key;
-	int keyNum = 1;
-	ushort offset = getKeyOffset(keyNum, attr);
-	while (keyNum <= numEntry())
+	for (int i = 1; i <= numEntries; i++)
 	{
-		ushort keySize = readKey(key, offset, attr);
-
-		int comp = oldKey.compare(key, attr);
+		int comp = keys[i].compare(oldKey, attr);
 		if (comp == 0)
 		{
-			//update key here
-			ushort newKeySize = newKey.keySize(attr);
-			if (newKeySize != keySize)
-			{
-				increaseSpace(offset, newKeySize - keySize);
-			}
-			writeKey(newKey, offset, attr);
-			return;
+			//update the new key here
+			keys[i] = newKey;
+			spaceUsed = spaceUsed - oldKey.keySize(attr) + newKey.keySize(attr);
 		}
-		keyNum++;
-		offset += keySize;
 	}
-
 }
 
 void InternalPage::deleteKey(const BTreeKey& key, const Attribute& attr)
 {
-	BTreeKey oldKey;
-	int keyNum = 1;
-	ushort offset = getKeyOffset(keyNum, attr);
-	while (keyNum <= numEntry())
-	{
-		ushort oldKeySize = readKey(oldKey, offset, attr);
+	vector<BTreeKey>::iterator keyIt = keys.begin();
+	vector<PageNum>::iterator pageIt = pageNums.begin();
 
-		int comp = oldKey.compare(key, attr);
+	keyIt++;
+	pageIt++;
+
+	for (int i = 1; i <= numEntries; i++)
+	{
+		int comp = (*keyIt).compare(key, attr);
 		if (comp == 0)
 		{
-			//delete key and page num here
-			increaseSpace(offset, -(oldKeySize + sizeof(PageNum)));
-			numEntry(numEntry() - 1);
+			//we delete the key here
+			keys.erase(keyIt);
+			pageNums.erase(pageIt);
+			numEntries--;
+			spaceUsed -= entrySize(key, 0, attr);
 			return;
 		}
-		keyNum++;
-		offset += keySize;
+
+		keyIt++;
+		pageIt++;
 	}
 
 }
 
 void InternalPage::insertKey(const BTreeKey& key, PageNum pageNum, const Attribute& attr)
 {
-	BTreeKey oldKey;
-	PageNum oldPageNum;
-	int keyNum = 1;
-	ushort offset = getKeyOffset(keyNum, attr);
-	while (keyNum <= numEntry())
-	{
-		ushort oldSize = readEntry(oldKey, oldPageNum, offset, attr);
+	vector<PageNum>::iterator pageIt = pageNums.begin();
+	vector<BTreeKey>::iterator keyIt = keys.begin();
 
-		int comp = oldKey.compare(key, attr);
+	pageIt++;
+	keyIt++;
+
+	for (int i = 1; i <= numEntries; i++)
+	{
+		int comp = (*keyIt).compare(key, attr);
+
 		if (comp > 0)
 		{
-			//place the new key here
-			increaseSpace(offset, key.keySize(attr) + sizeof(PageNum));
-			writeEntry(key, pageNum, offset, attr);
-			numEntry(numEntry() + 1);
+			//we should insert the key here
+			keys.insert(keyIt, key);
+			pageNums.insert(pageIt, pageNum);
+			spaceUsed += entrySize(key, pageNum, attr);
+			numEntries++;
 			return;
 		}
 		else if (comp == 0)
 		{
-			logError("Try to insert duplicate key into internal page, rid:" + key.rid);
+			logError("Try to insert duplicate key into non-leaf page, rid:" + key.rid);
 			return;
 		}
-		keyNum++;
-		offset += oldSize;
+
+		pageIt++;
+		keyIt++;
 
 	}
+	//place the new key here
 
-//place the new key here
-	ushort freeSpace = nextFreeSpace();
-	assert(offset == freeSpace);
-	freeSpace += writeEntry(key, pageNum, offset, attr);
+	keys.push_back(key);
+	pageNums.push_back(pageNum);
+	spaceUsed += entrySize(key, pageNum, attr);
+	numEntries++;
 
-	numEntry(numEntry() + 1);
-	nextFreeSpace(freeSpace);
-}
-
-ushort InternalPage::getEntryOffset(int num, const Attribute& attr)
-{
-	ushort offset = PAGE_HEADER_SIZE;
-	offset += pageNumSize(offset);
-	for (int i = 1; i < num; i++)
-	{
-		offset += keySize(offset, attr);
-		offset += pageNumSize(offset);
-	}
-
-	return offset;
 }
 
 LeafPage::LeafPage(void * data) :
 		BTreePage(data, sizeof(bool) + 2 * sizeof(ushort) + sizeof(PageNum))
 {
+	siblingPage = 0;
 }
 
-void LeafPage::initialize()
+void LeafPage::initialize(const Attribute& attr)
 {
-	BTreePage::initialize();
-	write(data, (bool) true, 0);
-}
+	BTreePage::initialize(attr);
 
-ushort LeafPage::getKeyOffset(int num, const Attribute& attr)
-{
-	ushort offset = this->PAGE_HEADER_SIZE;
+	read(data, siblingPage, SIBLING_OFFSET);
 
-	for (int i = 1; i < num; i++)
+	BTreeKey key;
+	keys.push_back(key);
+
+	ushort offset = PAGE_HEADER_SIZE;
+	for (int i = 1; i <= numEntries; i++)
 	{
-		offset += keySize(offset, attr);
+		offset += readKey(key, offset, attr);
+		keys.push_back(key);
 	}
-	return offset;
 }
 
-PageNum LeafPage::sibling()
+void LeafPage::reset()
 {
-	PageNum pageNum;
-	read(data, pageNum, sizeof(bool) + 2 * sizeof(ushort));
-	return pageNum;
+	BTreePage::reset();
+
+	siblingPage = 0;
+
 }
 
-void LeafPage::sibling(PageNum pageNum)
+void LeafPage::flush(const Attribute& attr)
 {
-	write(data, pageNum, sizeof(bool) + 2 * sizeof(ushort));
+	BTreePage::flush(attr);
+
+	write(data, (bool) true, 0);
+
+	write(data, siblingPage, SIBLING_OFFSET);
+
+	ushort offset = PAGE_HEADER_SIZE;
+
+	for (int i = 1; i <= numEntries; i++)
+	{
+		offset += writeKey(keys[i], offset, attr);
+	}
+
 }
 
 void LeafPage::insertKey(const BTreeKey& key, const Attribute& attr)
 {
-	BTreeKey oldKey;
-	int keyNum = 1;
-	ushort offset = getKeyOffset(keyNum, attr);
-	while (keyNum <= numEntry())
-	{
-		ushort oldKeySize = readKey(oldKey, offset, attr);
+	vector<BTreeKey>::iterator keyIt = keys.begin();
 
-		int comp = oldKey.compare(key, attr);
+	keyIt++;
+
+	for (int i = 1; i <= numEntries; i++)
+	{
+		int comp = (*keyIt).compare(key, attr);
+
 		if (comp > 0)
 		{
-			//place the new key here
-			increaseSpace(offset, key.keySize(attr));
-			writeKey(key, offset, attr);
-			numEntry(numEntry() + 1);
-
+			//we should insert the key here
+			keys.insert(keyIt, key);
+			spaceUsed += key.keySize(attr);
+			numEntries++;
 			return;
 		}
 		else if (comp == 0)
@@ -409,42 +403,36 @@ void LeafPage::insertKey(const BTreeKey& key, const Attribute& attr)
 			return;
 		}
 
-		keyNum++;
-		offset += oldKeySize;
+		keyIt++;
 
 	}
+	//place the new key here
 
-//place the new key here
-	ushort freeSpace = nextFreeSpace();
-	freeSpace += writeKey(key, offset, attr);
-
-	numEntry(numEntry() + 1);
-	nextFreeSpace(freeSpace);
+	keys.push_back(key);
+	spaceUsed += key.keySize(attr);
+	numEntries++;
 
 }
 
 void LeafPage::deleteKey(const BTreeKey& key, const Attribute& attr)
 {
-	BTreeKey oldKey;
-	int keyNum = 1;
-	ushort offset = getKeyOffset(keyNum, attr);
-	while (keyNum <= numEntry())
+	vector<BTreeKey>::iterator keyIt = keys.begin();
+	keyIt++;
+	for (int i = 1; i <= numEntries; i++)
 	{
-		ushort oldKeySize = readKey(oldKey, offset, attr);
-
-		int comp = oldKey.compare(key, attr);
+		int comp = (*keyIt).compare(key, attr);
 		if (comp == 0)
 		{
-			//delete the key here
-			offset += oldKeySize;
-			increaseSpace(offset, -oldKeySize);
-			numEntry(numEntry() - 1);
+			//delete the target key
+			keys.erase(keyIt);
+			spaceUsed -= key.keySize(attr);
+			numEntries--;
 			return;
 		}
-		keyNum++;
-		offset += oldKeySize;
+		keyIt++;
 
 	}
+
 }
 
 IndexManager * IndexManager::instance()
