@@ -89,6 +89,23 @@ ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute,
 	return 0;
 }
 
+unsigned attributeSize(const Attribute& attr, const void * data)
+{
+	int size = 0;
+	switch (attr.type)
+	{
+	case TypeInt:
+	case TypeReal:
+		size = 4;
+		break;
+	case TypeVarChar:
+		read(data, size, sizeof(int));
+		size += sizeof(int);
+		break;
+	}
+	return size;
+}
+
 Record::Record() :
 		data(NULL), recordSize(0)
 {
@@ -850,7 +867,6 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle,
 		overflowPage.readRecordSlot(slotNum, slot);
 		overflowPage.readRecord(slot, recordDescriptor, record);
 	}
-	int version = record.getVersion();
 	fillData(recordDescriptor, record, data);
 	return 0;
 

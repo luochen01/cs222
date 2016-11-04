@@ -18,6 +18,8 @@ bool equals(float left, float right);
 ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute, const void * from,
 		ushort fromOffset);
 
+unsigned attributeSize(const Attribute& attr, const void * data);
+
 // Record ID
 typedef struct
 {
