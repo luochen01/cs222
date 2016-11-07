@@ -237,7 +237,8 @@ ushort InternalPage::writeEntry(const BTreeKey& key, PageNum pageNum, ushort off
 	return newOffset - offset;
 }
 
-ushort InternalPage::readEntry(BTreeKey& key, PageNum& pageNum, ushort offset, const Attribute& attr)
+ushort InternalPage::readEntry(BTreeKey& key, PageNum& pageNum, ushort offset,
+		const Attribute& attr)
 {
 	ushort newOffset = offset;
 	newOffset += readKey(key, newOffset, attr);
@@ -445,10 +446,12 @@ IndexManager * IndexManager::instance()
 
 IndexManager::IndexManager()
 {
+	buffer = malloc(PAGE_SIZE);
 }
 
 IndexManager::~IndexManager()
 {
+	free(buffer);
 }
 
 BTreePage* IndexManager::readPage(IXFileHandle& fileHandle, PageNum pageNum)
@@ -469,8 +472,22 @@ BTreePage* IndexManager::readPage(IXFileHandle& fileHandle, PageNum pageNum)
 
 RC IndexManager::createFile(const string &fileName)
 {
-	return PagedFileManager::instance()->createFile(fileName);
+	PagedFileManager * pfm = PagedFileManager::instance();
+	if (pfm->createFile(fileName) != 0)
+	{
+		return -1;
+	}
+	IXFileHandle fileHandle;
 
+	pfm->openFile(fileName, fileHandle.handle);
+
+	memset(buffer, 0, PAGE_SIZE);
+	fileHandle.appendPage(buffer);
+
+	fileHandle.setRootPage(0);
+	pfm->closeFile(fileHandle.handle);
+
+	return 0;
 }
 
 RC IndexManager::destroyFile(const string &fileName)
@@ -480,11 +497,23 @@ RC IndexManager::destroyFile(const string &fileName)
 
 RC IndexManager::openFile(const string &fileName, IXFileHandle &ixfileHandle)
 {
-	return PagedFileManager::instance()->openFile(fileName, ixfileHandle.handle);
+	if (PagedFileManager::instance()->openFile(fileName, ixfileHandle.handle) != 0)
+	{
+		return -1;
+	}
+	//read the first page to get root page num
+	ixfileHandle.readPage(0, buffer);
+	PageNum rootPage = 0;
+	read(buffer, rootPage, 0);
+	ixfileHandle.setRootPage(rootPage);
+	return 0;
 }
 
 RC IndexManager::closeFile(IXFileHandle & ixfileHandle)
 {
+	//flush root page num
+	write(buffer, ixfileHandle.getRootPage(), 0);
+	ixfileHandle.writePage(0, buffer);
 	return PagedFileManager::instance()->closeFile(ixfileHandle.handle);
 }
 
@@ -534,6 +563,7 @@ IXFileHandle::IXFileHandle()
 	ixReadPageCounter = 0;
 	ixWritePageCounter = 0;
 	ixAppendPageCounter = 0;
+	rootPage = 0;
 }
 
 IXFileHandle::~IXFileHandle()
@@ -547,11 +577,6 @@ RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePa
 	writePageCount = ixWritePageCounter;
 	appendPageCount = ixAppendPageCounter;
 	return 0;
-}
-
-const string& IXFileHandle::getFileName()
-{
-	return handle.getFileName();
 }
 
 RC IXFileHandle::readPage(PageNum pageNum, void *data)
@@ -582,6 +607,16 @@ RC IXFileHandle::appendPage(const void *data)
 		ixAppendPageCounter++;
 	}
 	return result;
+}
+
+PageNum IXFileHandle::getRootPage()
+{
+	return rootPage;
+}
+
+void IXFileHandle::setRootPage(PageNum rootPage)
+{
+	this->rootPage = rootPage;
 }
 
 unsigned IXFileHandle::getNumberOfPages()

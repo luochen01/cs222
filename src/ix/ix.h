@@ -210,6 +210,9 @@ public:
 
 class IndexManager
 {
+private:
+	void * buffer;
+
 public:
 	static IndexManager* instance();
 
@@ -275,6 +278,8 @@ private:
 
 	FileHandle handle;
 
+	PageNum rootPage;
+
 public:
 
 	// variables to keep counter for each operation
@@ -292,13 +297,15 @@ public:
 	RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount,
 			unsigned &appendPageCount);
 
-	const string& getFileName();
-
 	RC readPage(PageNum pageNum, void *data);                             // Get a specific page
 
 	RC writePage(PageNum pageNum, const void *data);                      // Write a specific page
 
 	RC appendPage(const void *data);                                      // Append a specific page
+
+	PageNum getRootPage();
+
+	void setRootPage(PageNum rootPage);
 
 	unsigned getNumberOfPages();                              // Get the number of pages in the file
 
