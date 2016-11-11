@@ -4,6 +4,7 @@
 
 #include "../rbf/pfm.h"
 #include <assert.h>
+#include <algorithm>
 
 IndexManager* IndexManager::_index_manager = 0;
 
@@ -50,6 +51,31 @@ int compareString(const string& left, const string& right)
  * > 0, this > rhs
  */
 
+BTreeKey::BTreeKey()
+{
+	this->value = NULL;
+}
+
+BTreeKey::BTreeKey(const Attribute& attr, const void * value, const RID& rid)
+{
+	copyValue(attr, value);
+	this->rid = rid;
+}
+
+void BTreeKey::free()
+{
+	delete[] (byte*) this->value;
+	this->value = NULL;
+}
+
+ushort BTreeKey::copyValue(const Attribute& attr, const void * value)
+{
+	ushort size = attributeSize(attr, value);
+	this->value = new byte[size];
+	memcpy(this->value, value, size);
+	return size;
+}
+
 int BTreeKey::compare(const void * rhs, const Attribute& attr) const
 {
 	switch (attr.type)
@@ -83,7 +109,7 @@ int BTreeKey::compare(const BTreeKey& rhs, const Attribute& attr) const
 	{
 		return result;
 	}
-	//now compare rid
+//now compare rid
 	result = compareInt(rid.pageNum, rhs.rid.pageNum);
 	if (result != 0)
 	{
@@ -98,10 +124,29 @@ ushort BTreeKey::keySize(const Attribute& attr) const
 	return size + 2 * sizeof(unsigned);
 }
 
-BTreePage::BTreePage(void * data, int headerSize) :
+ushort BTreeKey::readFrom(const Attribute& attr, const void * data)
+{
+	ushort offset = 0;
+	offset += copyValue(attr, data);
+	offset += read(data, rid.pageNum, offset);
+	offset += read(data, rid.slotNum, offset);
+	return offset;
+}
+
+ushort BTreeKey::writeTo(const Attribute& attr, void * data) const
+{
+	ushort offset = 0;
+	offset += copyAttributeData(data, 0, attr, this->value, 0);
+	offset += write(data, rid.pageNum, offset);
+	offset += write(data, rid.slotNum, offset);
+	return offset;
+}
+
+BTreePage::BTreePage(void * data, PageNum pageNum, int headerSize) :
 		PAGE_HEADER_SIZE(headerSize)
 {
 	this->data = data;
+	this->pageNum = pageNum;
 	numEntries = 0;
 	spaceUsed = 0;
 }
@@ -112,7 +157,7 @@ void BTreePage::reset()
 	spaceUsed = PAGE_HEADER_SIZE;
 	keys.clear();
 
-	//insert a dummy key here
+//insert a dummy key here
 	keys.push_back(BTreeKey());
 }
 
@@ -130,21 +175,12 @@ void BTreePage::flush(const Attribute& attr)
 
 ushort BTreePage::readKey(BTreeKey& key, ushort offset, const Attribute& attr)
 {
-	ushort newOffset = offset;
-	key.value = (byte*) data + newOffset;
-	newOffset += attributeSize(attr, key.value);
-	newOffset += read(data, key.rid.pageNum, newOffset);
-	newOffset += read(data, key.rid.slotNum, newOffset);
-	return newOffset - offset;
+	return key.readFrom(attr, (byte*) data + offset);
 }
 
 ushort BTreePage::writeKey(const BTreeKey& key, ushort offset, const Attribute& attr)
 {
-	ushort newOffset = offset;
-	newOffset += writeBuffer(data, newOffset, key.value, 0, attributeSize(attr, key.value));
-	newOffset += write(data, key.rid.pageNum, newOffset);
-	newOffset += write(data, key.rid.slotNum, newOffset);
-	return newOffset - offset;
+	return key.writeTo(attr, (byte*) data + offset);
 }
 
 void BTreePage::getKey(int num, BTreeKey& key)
@@ -152,22 +188,26 @@ void BTreePage::getKey(int num, BTreeKey& key)
 	key = keys[num];
 }
 
-//is there enough space to hold a new entry?
-bool BTreePage::isFull(const Attribute& attr, const void* value)
-{
-	//a new key (value + RID) + page num
-	return spaceUsed + attributeSize(attr, value) + 2 * sizeof(ushort) + sizeof(unsigned)
-			< PAGE_SIZE;
-}
-
 bool BTreePage::isHalfFull()
 {
 	return spaceUsed * 2 > PAGE_SIZE;
 }
 
-InternalPage::InternalPage(void * data) :
-		BTreePage(data, sizeof(bool) + 2 * sizeof(ushort))
+InternalPage::InternalPage() :
+		BTreePage(malloc(PAGE_SIZE), 0, sizeof(bool) + 2 * sizeof(ushort))
 {
+}
+
+InternalPage::InternalPage(void * data, PageNum pageNum) :
+		BTreePage(data, pageNum, sizeof(bool) + 2 * sizeof(ushort))
+{
+}
+
+//is there enough space to hold a new entry?
+bool InternalPage::isFull(const BTreeKey& key, const Attribute& attr)
+{
+//a new key (value + RID) + page num
+	return spaceUsed + key.keySize(attr) + sizeof(unsigned) < PAGE_SIZE;
 }
 
 ushort InternalPage::entrySize(const BTreeKey& key, PageNum pageNum, const Attribute& attr)
@@ -179,14 +219,14 @@ void InternalPage::initialize(const Attribute& attr)
 {
 	BTreePage::initialize(attr);
 
-	//load keys and page nums
+//load keys and page nums
 	PageNum pageNum;
 	BTreeKey key;
 
 	ushort offset = PAGE_HEADER_SIZE;
 	offset += readPageNum(pageNum, offset);
 	pageNums.push_back(pageNum);
-	//push a dummy key here
+//push a dummy key here
 	keys.push_back(key);
 
 	for (int i = 1; i <= numEntries; i++)
@@ -215,7 +255,46 @@ void InternalPage::flush(const Attribute& attr)
 	for (int i = 1; i <= numEntries; i++)
 	{
 		offset += writeEntry(keys[i], pageNums[i], offset, attr);
+		keys[i].free();
 	}
+}
+
+void InternalPage::distributeTo(InternalPage& rhs, const Attribute& attribute, BTreeKey& newKey,
+		PageNum& newPage)
+{
+	//insert the key/page num here
+	insertEntry(newKey, newPage, attribute);
+
+	vector<BTreeKey>::iterator keysIt = keys.begin();
+	vector<PageNum>::iterator pagesIt = pageNums.begin();
+	//skip the first key
+	keysIt++;
+	pagesIt++;
+
+	int size = PAGE_HEADER_SIZE;
+	while (size < spaceUsed / 2)
+	{
+		size += entrySize(*(keysIt++), *(pagesIt++), attribute);
+	}
+	vector<BTreeKey>::iterator eraseKeysBegin = keysIt;
+	vector<PageNum>::iterator erasePagesBegin = pagesIt;
+
+	//set the first key
+	newKey = *(keysIt++);
+	rhs.appendPageNum(*(pagesIt++), attribute);
+
+	while (keysIt != keys.end())
+	{
+		//append the remaining keys
+		rhs.appendEntry(*(keysIt++), *(pagesIt++), attribute);
+	}
+
+	//erase the remaining keys from this page
+	keys.erase(eraseKeysBegin, keys.end());
+	pageNums.erase(erasePagesBegin, pageNums.end());
+	spaceUsed = size;
+	numEntries = keys.size();
+
 }
 
 ushort InternalPage::readPageNum(PageNum& pageNum, ushort offset)
@@ -251,6 +330,22 @@ void InternalPage::getPageNum(int num, PageNum& pageNum)
 	pageNum = pageNums[num];
 }
 
+PageNum InternalPage::findSubtree(const BTreeKey & key, const Attribute& attr)
+{
+
+	for (int i = 1; i <= numEntries; i++)
+	{
+		int comp = keys[i].compare(key, attr);
+		if (comp > 0)
+		{
+			return pageNums[i - 1];
+		}
+	}
+
+	return pageNums[numEntries];
+
+}
+
 void InternalPage::updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr)
 {
 	for (int i = 1; i <= numEntries; i++)
@@ -265,20 +360,20 @@ void InternalPage::updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, con
 	}
 }
 
-void InternalPage::deleteKey(const BTreeKey& key, const Attribute& attr)
+void InternalPage::deleteEntry(const BTreeKey& key, const Attribute& attr)
 {
 	vector<BTreeKey>::iterator keyIt = keys.begin();
 	vector<PageNum>::iterator pageIt = pageNums.begin();
 
 	keyIt++;
 	pageIt++;
-
 	for (int i = 1; i <= numEntries; i++)
 	{
 		int comp = (*keyIt).compare(key, attr);
 		if (comp == 0)
 		{
 			//we delete the key here
+			(*keyIt).free();
 			keys.erase(keyIt);
 			pageNums.erase(pageIt);
 			numEntries--;
@@ -292,7 +387,7 @@ void InternalPage::deleteKey(const BTreeKey& key, const Attribute& attr)
 
 }
 
-void InternalPage::insertKey(const BTreeKey& key, PageNum pageNum, const Attribute& attr)
+void InternalPage::insertEntry(const BTreeKey& key, PageNum pageNum, const Attribute& attr)
 {
 	vector<PageNum>::iterator pageIt = pageNums.begin();
 	vector<BTreeKey>::iterator keyIt = keys.begin();
@@ -323,8 +418,14 @@ void InternalPage::insertKey(const BTreeKey& key, PageNum pageNum, const Attribu
 		keyIt++;
 
 	}
-	//place the new key here
+//place the new key here
 
+	appendEntry(key, pageNum, attr);
+
+}
+
+void InternalPage::appendEntry(const BTreeKey& key, PageNum pageNum, const Attribute& attr)
+{
 	keys.push_back(key);
 	pageNums.push_back(pageNum);
 	spaceUsed += entrySize(key, pageNum, attr);
@@ -332,8 +433,20 @@ void InternalPage::insertKey(const BTreeKey& key, PageNum pageNum, const Attribu
 
 }
 
-LeafPage::LeafPage(void * data) :
-		BTreePage(data, sizeof(bool) + 2 * sizeof(ushort) + sizeof(PageNum))
+void InternalPage::appendPageNum(PageNum pageNum, const Attribute& attr)
+{
+	pageNums.push_back(pageNum);
+	spaceUsed += sizeof(PageNum);
+}
+
+LeafPage::LeafPage() :
+		BTreePage(malloc(PAGE_SIZE), 0, sizeof(bool) + 2 * sizeof(ushort) + sizeof(PageNum))
+{
+	siblingPage = 0;
+}
+
+LeafPage::LeafPage(void * data, PageNum pageNum) :
+		BTreePage(data, pageNum, sizeof(bool) + 2 * sizeof(ushort) + sizeof(PageNum))
 {
 	siblingPage = 0;
 }
@@ -376,7 +489,46 @@ void LeafPage::flush(const Attribute& attr)
 	for (int i = 1; i <= numEntries; i++)
 	{
 		offset += writeKey(keys[i], offset, attr);
+		keys[i].free();
 	}
+
+}
+
+//is there enough space to hold a new entry?
+bool LeafPage::isFull(const BTreeKey& key, const Attribute& attr)
+{
+//a new key (value + RID) + page num
+	return spaceUsed + key.keySize(attr) <= PAGE_SIZE;
+}
+
+void LeafPage::distributeTo(LeafPage& rhs, const Attribute& attr, const BTreeKey& key,
+		BTreeKey& newKey)
+{
+	insertKey(key, attr);
+
+	vector<BTreeKey>::iterator it = keys.begin();
+	//skip the first key
+	it++;
+
+	int size = PAGE_HEADER_SIZE;
+	while (size < spaceUsed / 2)
+	{
+		size += (*it++).keySize(attr);
+	}
+	vector<BTreeKey>::iterator eraseBegin = it;
+
+	newKey = *it;
+
+	while (it != keys.end())
+	{
+		rhs.appendKey(*it, attr);
+		it++;
+	}
+
+	//erase the remaining keys from this page
+	keys.erase(eraseBegin, keys.end());
+	spaceUsed = size;
+	numEntries = keys.size();
 
 }
 
@@ -407,12 +559,17 @@ void LeafPage::insertKey(const BTreeKey& key, const Attribute& attr)
 		keyIt++;
 
 	}
-	//place the new key here
+//place the new key here
 
+	appendKey(key, attr);
+
+}
+
+void LeafPage::appendKey(const BTreeKey& key, const Attribute& attr)
+{
 	keys.push_back(key);
 	spaceUsed += key.keySize(attr);
 	numEntries++;
-
 }
 
 void LeafPage::deleteKey(const BTreeKey& key, const Attribute& attr)
@@ -425,6 +582,7 @@ void LeafPage::deleteKey(const BTreeKey& key, const Attribute& attr)
 		if (comp == 0)
 		{
 			//delete the target key
+			(*keyIt).free();
 			keys.erase(keyIt);
 			spaceUsed -= key.keySize(attr);
 			numEntries--;
@@ -433,7 +591,18 @@ void LeafPage::deleteKey(const BTreeKey& key, const Attribute& attr)
 		keyIt++;
 
 	}
+}
 
+bool LeafPage::containsKey(const BTreeKey& key, const Attribute& attr)
+{
+	for (int i = 1; i <= numEntries; i++)
+	{
+		if (keys[i].compare(key, attr) == 0)
+		{
+			return true;
+		}
+	}
+	return false;
 }
 
 IndexManager * IndexManager::instance()
@@ -454,20 +623,38 @@ IndexManager::~IndexManager()
 	free(buffer);
 }
 
-BTreePage* IndexManager::readPage(IXFileHandle& fileHandle, PageNum pageNum)
+BTreePage* IndexManager::readPage(IXFileHandle& fileHandle, PageNum pageNum, const Attribute& attr)
 {
 	void * data = malloc(PAGE_SIZE);
 	fileHandle.readPage(pageNum, data);
 	bool isLeaf;
 	read(data, isLeaf, 0);
+	BTreePage *page = NULL;
 	if (isLeaf)
 	{
-		return new LeafPage(data);
+		page = new LeafPage(data, pageNum);
 	}
 	else
 	{
-		return new InternalPage(data);
+		page = new InternalPage(data, pageNum);
 	}
+
+	page->initialize(attr);
+	return page;
+
+}
+
+void IndexManager::writePage(IXFileHandle & fileHandle, BTreePage* page, const Attribute& attr)
+{
+	page->flush(attr);
+	fileHandle.writePage(page->pageNum, page->data);
+}
+
+void IndexManager::appendPage(IXFileHandle & fileHandle, BTreePage* page, const Attribute& attr)
+{
+	page->flush(attr);
+	fileHandle.appendPage(page->data);
+	page->pageNum = fileHandle.getNumberOfPages() - 1;
 }
 
 RC IndexManager::createFile(const string &fileName)
@@ -501,7 +688,7 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixfileHandle)
 	{
 		return -1;
 	}
-	//read the first page to get root page num
+//read the first page to get root page num
 	ixfileHandle.readPage(0, buffer);
 	PageNum rootPage = 0;
 	read(buffer, rootPage, 0);
@@ -511,7 +698,7 @@ RC IndexManager::openFile(const string &fileName, IXFileHandle &ixfileHandle)
 
 RC IndexManager::closeFile(IXFileHandle & ixfileHandle)
 {
-	//flush root page num
+//flush root page num
 	write(buffer, ixfileHandle.getRootPage(), 0);
 	ixfileHandle.writePage(0, buffer);
 	return PagedFileManager::instance()->closeFile(ixfileHandle.handle);
@@ -520,7 +707,123 @@ RC IndexManager::closeFile(IXFileHandle & ixfileHandle)
 RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attribute,
 		const void *key, const RID &rid)
 {
-	return -1;
+	BTreePage * rootPage = readPage(ixfileHandle, ixfileHandle.rootPage, attribute);
+	BTreeKey treeKey(attribute, key, rid);
+	BTreeKey newKey;
+	PageNum newPage;
+	bool splitted = false;
+	RC result = doInsert(ixfileHandle, rootPage, attribute, treeKey, splitted, newKey, newPage);
+	if (result != 0)
+	{
+		return -1;
+	}
+	if (splitted)
+	{
+		//we need to create a new root page
+		InternalPage * newRootPage = new InternalPage();
+		newRootPage->reset();
+
+		newRootPage->appendPageNum(rootPage->pageNum, attribute);
+		newRootPage->appendEntry(newKey, newPage, attribute);
+
+		appendPage(ixfileHandle, newRootPage, attribute);
+		ixfileHandle.setRootPage(newRootPage->pageNum);
+
+		delete newRootPage;
+	}
+
+	return 0;
+}
+
+RC IndexManager::doInsert(IXFileHandle & ixfileHandle, BTreePage * page, const Attribute& attribute,
+		const BTreeKey& key, bool& splitted, BTreeKey & newKey, PageNum& newPage)
+{
+	if (page->isLeaf())
+	{
+		LeafPage * leafPage = (LeafPage *) page;
+		if (leafPage->containsKey(key, attribute))
+		{
+			return -1;
+		}
+		if (!leafPage->isFull(key, attribute))
+		{
+			//place the key here
+			leafPage->insertKey(key, attribute);
+			writePage(ixfileHandle, leafPage, attribute);
+			delete leafPage;
+			splitted = false;
+			return 0;
+		}
+		else
+		{
+			//we need to split
+			LeafPage * splittedPage = new LeafPage();
+			splittedPage->reset();
+
+			leafPage->distributeTo(*splittedPage, attribute, key, newKey);
+			splittedPage->setSibling(leafPage->getSibling());
+			appendPage(ixfileHandle, splittedPage, attribute);
+			newPage = splittedPage->pageNum;
+
+			leafPage->setSibling(splittedPage->pageNum);
+			writePage(ixfileHandle, leafPage, attribute);
+
+			delete leafPage;
+			delete splittedPage;
+
+			splitted = true;
+			return 0;
+		}
+	}
+	else
+	{	//handle internal page here
+
+		InternalPage * internalPage = (InternalPage *) page;
+		//choose a proper subtree to recursively insert
+		PageNum childPageNum = internalPage->findSubtree(key, attribute);
+		BTreePage * childPage = readPage(ixfileHandle, childPageNum, attribute);
+
+		RC result = doInsert(ixfileHandle, childPage, attribute, key, splitted, newKey, newPage);
+		if (result != 0)
+		{
+			return -1;
+		}
+		if (splitted)
+		{
+			//we need to handle newKey and newPageNum
+			if (!internalPage->isFull(newKey, attribute))
+			{
+				//we have space here
+				internalPage->insertEntry(newKey, newPage, attribute);
+				writePage(ixfileHandle, internalPage, attribute);
+				delete internalPage;
+				splitted = false;
+				return 0;
+			}
+			else
+			{
+				//unfortunately, we need to split internalPage again
+				InternalPage * splittedPage = new InternalPage();
+				splittedPage->reset();
+				internalPage->distributeTo(*splittedPage, attribute, newKey, newPage);
+
+				appendPage(ixfileHandle, splittedPage, attribute);
+				writePage(ixfileHandle, internalPage, attribute);
+
+				newPage = splittedPage->pageNum;
+
+				delete internalPage;
+				delete splittedPage;
+				splitted = true;
+				return 0;
+			}
+		}
+		else
+		{
+			splitted = false;
+			return 0;
+		}
+	}
 }
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute,
@@ -533,6 +836,7 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle, const Attribute &attribute, co
 		const void *highKey, bool lowKeyInclusive, bool highKeyInclusive,
 		IX_ScanIterator &ix_ScanIterator)
 {
+
 	return -1;
 }
 
