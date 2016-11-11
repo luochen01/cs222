@@ -142,6 +142,36 @@ ushort BTreeKey::writeTo(const Attribute& attr, void * data) const
 	return offset;
 }
 
+void BTreeKey::print(const Attribute& attr) const
+{
+	cout << '"';
+
+	int ivalue;
+	float fvalue;
+	string svalue;
+
+	switch (attr.type)
+	{
+	case TypeInt:
+		read(value, ivalue, 0);
+		cout << ivalue;
+		break;
+	case TypeReal:
+		read(value, fvalue, 0);
+		cout << fvalue;
+		break;
+	case TypeVarChar:
+		readString(value, svalue, 0);
+		cout << svalue;
+		break;
+	}
+
+	cout << "(" << rid.pageNum << "," << rid.slotNum << ")";
+
+	cout << '"';
+
+}
+
 BTreePage::BTreePage(void * data, PageNum pageNum, int headerSize) :
 		PAGE_HEADER_SIZE(headerSize)
 {
@@ -262,12 +292,12 @@ void InternalPage::flush(const Attribute& attr)
 void InternalPage::distributeTo(InternalPage& rhs, const Attribute& attribute, BTreeKey& newKey,
 		PageNum& newPage)
 {
-	//insert the key/page num here
+//insert the key/page num here
 	insertEntry(newKey, newPage, attribute);
 
 	vector<BTreeKey>::iterator keysIt = keys.begin();
 	vector<PageNum>::iterator pagesIt = pageNums.begin();
-	//skip the first key
+//skip the first key
 	keysIt++;
 	pagesIt++;
 
@@ -279,7 +309,7 @@ void InternalPage::distributeTo(InternalPage& rhs, const Attribute& attribute, B
 	vector<BTreeKey>::iterator eraseKeysBegin = keysIt;
 	vector<PageNum>::iterator erasePagesBegin = pagesIt;
 
-	//set the first key
+//set the first key
 	newKey = *(keysIt++);
 	rhs.appendPageNum(*(pagesIt++), attribute);
 
@@ -289,7 +319,7 @@ void InternalPage::distributeTo(InternalPage& rhs, const Attribute& attribute, B
 		rhs.appendEntry(*(keysIt++), *(pagesIt++), attribute);
 	}
 
-	//erase the remaining keys from this page
+//erase the remaining keys from this page
 	keys.erase(eraseKeysBegin, keys.end());
 	pageNums.erase(erasePagesBegin, pageNums.end());
 	spaceUsed = size;
@@ -343,7 +373,25 @@ PageNum InternalPage::findSubtree(const BTreeKey & key, const Attribute& attr)
 	}
 
 	return pageNums[numEntries];
+}
 
+PageNum InternalPage::findSubtree(const void * key, const Attribute& attr)
+{
+	if (key == NULL)
+	{
+		return pageNums[0];
+	}
+
+	for (int i = 1; i <= numEntries; i++)
+	{
+		int comp = keys[i].compare(key, attr);
+		if (comp > 0)
+		{
+			return pageNums[i - 1];
+		}
+	}
+
+	return pageNums[numEntries];
 }
 
 void InternalPage::updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr)
@@ -385,7 +433,7 @@ RC InternalPage::deleteEntry(const BTreeKey& key, const Attribute& attr)
 		pageIt++;
 	}
 
-    return -1;
+	return -1;
 }
 
 void InternalPage::insertEntry(const BTreeKey& key, PageNum pageNum, const Attribute& attr)
@@ -453,7 +501,7 @@ void InternalPage::getKeyNum(const BTreeKey& key, const Attribute& attr, int &nu
 		}
 		else if (comp == 0)
 		{
-            num++;
+			num++;
 			return;
 		}
 
@@ -461,19 +509,20 @@ void InternalPage::getKeyNum(const BTreeKey& key, const Attribute& attr, int &nu
 		keyIt++;
 	}
 
-    return;
+	return;
 }
 
-void InternalPage::redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey)
+void InternalPage::redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor,
+		BTreeKey &newKey)
 {
-    assert(!this->isHalfFull());
-    assert(neighbor->isHalfFull());
+	assert(!this->isHalfFull());
+	assert(neighbor->isHalfFull());
 }
 
 void InternalPage::merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor)
 {
-    assert(!this->isHalfFull());
-    assert(!neighbor->isHalfFull());
+	assert(!this->isHalfFull());
+	assert(!neighbor->isHalfFull());
 }
 
 void InternalPage::appendPageNum(PageNum pageNum, const Attribute& attr)
@@ -539,8 +588,8 @@ void LeafPage::flush(const Attribute& attr)
 
 void LeafPage::getPageNum(int num, PageNum& pageNum)
 {
-    logError("Leaf Page doesn't have PageNum!");
-    return;
+	logError("Leaf Page doesn't have PageNum!");
+	return;
 }
 
 //is there enough space to hold a new entry?
@@ -556,7 +605,7 @@ void LeafPage::distributeTo(LeafPage& rhs, const Attribute& attr, const BTreeKey
 	insertKey(key, attr);
 
 	vector<BTreeKey>::iterator it = keys.begin();
-	//skip the first key
+//skip the first key
 	it++;
 
 	int size = PAGE_HEADER_SIZE;
@@ -574,7 +623,7 @@ void LeafPage::distributeTo(LeafPage& rhs, const Attribute& attr, const BTreeKey
 		it++;
 	}
 
-	//erase the remaining keys from this page
+//erase the remaining keys from this page
 	keys.erase(eraseBegin, keys.end());
 	spaceUsed = size;
 	numEntries = keys.size();
@@ -655,62 +704,65 @@ RC LeafPage::deleteKey(const BTreeKey& key, const Attribute& attr)
 
 	}
 
-    return -1;
+	return -1;
 }
 
-void LeafPage::redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey)
+void LeafPage::redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor,
+		BTreeKey &newKey)
 {
-    assert(!this->isHalfFull());
-    assert(neighbor->isHalfFull());
+	assert(!this->isHalfFull());
+	assert(neighbor->isHalfFull());
 
-    LeafPage* neighborPage = (LeafPage *) neighbor;
+	LeafPage* neighborPage = (LeafPage *) neighbor;
 
-    int numThisKeys = this->getNumEntries();
-    int numNeighborKeys = neighborPage->getNumEntries();
-    int mid = (numThisKeys + numNeighborKeys)/2;
-    if (isLeftNeighbor)
-    {
-        BTreeKey tmpFirst;
-        for (int i = 0; i < numNeighborKeys - mid; i++)
-        {
-            BTreeKey tmpKey;
-            // FIXME: double check num
-            neighborPage->getKey(neighborPage->getNumEntries(), tmpKey);   // Always get from end
-            this->insertKey(tmpKey, attr);
-            this->getKey(1, tmpFirst);
-            assert(0==tmpFirst.compare(tmpKey, attr));
-            neighborPage->deleteKey(tmpKey, attr);
-        }
+	int numThisKeys = this->getNumEntries();
+	int numNeighborKeys = neighborPage->getNumEntries();
+	int mid = (numThisKeys + numNeighborKeys) / 2;
+	if (isLeftNeighbor)
+	{
+		BTreeKey tmpFirst;
+		for (int i = 0; i < numNeighborKeys - mid; i++)
+		{
+			BTreeKey tmpKey;
+			// FIXME: double check num
+			neighborPage->getKey(neighborPage->getNumEntries(), tmpKey);   // Always get from end
+			this->insertKey(tmpKey, attr);
+			this->getKey(1, tmpFirst);
+			assert(0 == tmpFirst.compare(tmpKey, attr));
+			neighborPage->deleteKey(tmpKey, attr);
+		}
 
-        if (!this->isHalfFull())
-        {
-            logError("Redistribution failed, now size is "
-                    + this->getNumEntries() + ", originally " + numThisKeys);
-            return;
-        }
+		if (!this->isHalfFull())
+		{
+			logError("Redistribution failed, now size is "
+					+ this->getNumEntries() + ", originally " + numThisKeys);
+			return;
+		}
 
-        this->getKey(1, newKey);    // set newKey for the right page
-    } else {
-        BTreeKey tmpLast;
-        for (int i = 0; i < numNeighborKeys - mid; i++)
-        {
-            BTreeKey tmpKey;
-            neighborPage->getKey(1, tmpKey);   // Always get from beginning
-            this->insertKey(tmpKey, attr);
-            this->getKey(this->getNumEntries(), tmpLast);
-            assert(0==tmpLast.compare(tmpKey, attr));
-            neighborPage->deleteKey(tmpKey, attr);
-        }
+		this->getKey(1, newKey);    // set newKey for the right page
+	}
+	else
+	{
+		BTreeKey tmpLast;
+		for (int i = 0; i < numNeighborKeys - mid; i++)
+		{
+			BTreeKey tmpKey;
+			neighborPage->getKey(1, tmpKey);   // Always get from beginning
+			this->insertKey(tmpKey, attr);
+			this->getKey(this->getNumEntries(), tmpLast);
+			assert(0 == tmpLast.compare(tmpKey, attr));
+			neighborPage->deleteKey(tmpKey, attr);
+		}
 
-        if (!this->isHalfFull())
-        {
-            logError("Redistribution failed, now size is "
-                    + this->getNumEntries() + ", originally " + numThisKeys);
-            return;
-        }
+		if (!this->isHalfFull())
+		{
+			logError("Redistribution failed, now size is "
+					+ this->getNumEntries() + ", originally " + numThisKeys);
+			return;
+		}
 
-        neighborPage->getKey(1, newKey);    // set newKey for the right page
-    }
+		neighborPage->getKey(1, newKey);    // set newKey for the right page
+	}
 }
 
 bool LeafPage::containsKey(const BTreeKey& key, const Attribute& attr)
@@ -727,12 +779,11 @@ bool LeafPage::containsKey(const BTreeKey& key, const Attribute& attr)
 
 void LeafPage::merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor)
 {
-    assert(!this->isHalfFull());
-    assert(!neighbor->isHalfFull());
+	assert(!this->isHalfFull());
+	assert(!neighbor->isHalfFull());
 
-    // TODO
+// TODO
 }
-
 
 IndexManager * IndexManager::instance()
 {
@@ -752,10 +803,11 @@ IndexManager::~IndexManager()
 	free(buffer);
 }
 
-BTreePage* IndexManager::readPage(IXFileHandle& fileHandle, PageNum pageNum, const Attribute& attr)
+BTreePage* IndexManager::readPage(IXFileHandle& ixfileHandle, PageNum pageNum,
+		const Attribute& attr) const
 {
 	void * data = malloc(PAGE_SIZE);
-	fileHandle.readPage(pageNum, data);
+	ixfileHandle.readPage(pageNum, data);
 	bool isLeaf;
 	read(data, isLeaf, 0);
 	BTreePage *page = NULL;
@@ -872,6 +924,7 @@ RC IndexManager::doInsert(IXFileHandle & ixfileHandle, BTreePage * page, const A
 		LeafPage * leafPage = (LeafPage *) page;
 		if (leafPage->containsKey(key, attribute))
 		{
+			delete leafPage;
 			return -1;
 		}
 		if (!leafPage->isFull(key, attribute))
@@ -915,6 +968,7 @@ RC IndexManager::doInsert(IXFileHandle & ixfileHandle, BTreePage * page, const A
 		RC result = doInsert(ixfileHandle, childPage, attribute, key, splitted, newKey, newPage);
 		if (result != 0)
 		{
+			delete internalPage;
 			return -1;
 		}
 		if (splitted)
@@ -956,146 +1010,172 @@ RC IndexManager::doInsert(IXFileHandle & ixfileHandle, BTreePage * page, const A
 }
 
 RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute& attr, PageNum parent,
-        PageNum node, const BTreeKey &key, bool &oldEntryNull, BTreeKey oldEntryKey)
+		PageNum node, const BTreeKey &key, bool &oldEntryNull, BTreeKey oldEntryKey)
 {
-    BTreePage* page = readPage(ixfileHandle, node, attr);
-    if (!page->isLeaf()) {
-        InternalPage* internalPage = (InternalPage *) page;
+	BTreePage* page = readPage(ixfileHandle, node, attr);
+	if (!page->isLeaf())
+	{
+		InternalPage* internalPage = (InternalPage *) page;
 
-        int num = 0;
-        PageNum pageNum;
-        internalPage->getKeyNum(key, attr, num);
-        internalPage->getPageNum(num, pageNum);
-        if (doDelete(ixfileHandle, attr, node, pageNum, key, oldEntryNull, oldEntryKey) != 0) {
-            delete internalPage;
-            return -1;
-        }
-        if (oldEntryNull) {
-            writePage(ixfileHandle, internalPage, attr);
-            delete internalPage;
-            return 0;
-        } else {
-            if (internalPage->deleteEntry(oldEntryKey, attr) != 0) {
-                delete internalPage;
-                return -1;
-            }
-            if (internalPage->isHalfFull()) {
-                writePage(ixfileHandle, internalPage, attr);
-                delete internalPage;
-                oldEntryNull = true;
-                return 0;
-            } else {
-                // get a sibling S of N
-                // if S has extra entries,
-                //     redistribute evenly between N and S through parent
-                //     set oldchildentry to Null, return
-                // else, merge N and S
-                //     oldchildentry = &(current entry in parent for M)
-                //     PULL splitting key from parent DOWN into node on left
-                //     move all entries from M to node on left
-                //     discard empty node M, return
+		int num = 0;
+		PageNum pageNum;
+		internalPage->getKeyNum(key, attr, num);
+		internalPage->getPageNum(num, pageNum);
+		if (doDelete(ixfileHandle, attr, node, pageNum, key, oldEntryNull, oldEntryKey) != 0)
+		{
+			delete internalPage;
+			return -1;
+		}
+		if (oldEntryNull)
+		{
+			writePage(ixfileHandle, internalPage, attr);
+			delete internalPage;
+			return 0;
+		}
+		else
+		{
+			if (internalPage->deleteEntry(oldEntryKey, attr) != 0)
+			{
+				delete internalPage;
+				return -1;
+			}
+			if (internalPage->isHalfFull())
+			{
+				writePage(ixfileHandle, internalPage, attr);
+				delete internalPage;
+				oldEntryNull = true;
+				return 0;
+			}
+			else
+			{
+				// get a sibling S of N
+				// if S has extra entries,
+				//     redistribute evenly between N and S through parent
+				//     set oldchildentry to Null, return
+				// else, merge N and S
+				//     oldchildentry = &(current entry in parent for M)
+				//     PULL splitting key from parent DOWN into node on left
+				//     move all entries from M to node on left
+				//     discard empty node M, return
 
-                writePage(ixfileHandle, internalPage, attr);
-                delete internalPage;
-                //oldEntryNull = true;
-                return 0;
-            }
-        }
+				writePage(ixfileHandle, internalPage, attr);
+				delete internalPage;
+				//oldEntryNull = true;
+				return 0;
+			}
+		}
 
-    } else {
-        LeafPage* leafPage = (LeafPage *) page;
+	}
+	else
+	{
+		LeafPage* leafPage = (LeafPage *) page;
 
-        if (leafPage->isHalfFull()) {
-            // remove entry
-            if (leafPage->deleteKey(key, attr) != 0) {
-                delete leafPage;
-                return -1;
-            }
-            writePage(ixfileHandle, leafPage, attr);
-            delete leafPage;
-            oldEntryNull = true;
-            return 0;
-        } else {
-            // get a sibling S of L using parent pointer
-            // if S has extra entries
-            //     redistribute evenly between L and S
-            //     find entry in parent for node on right
-            //     replace key value in parent entry by new low-key value in M
-            //     set oldchildentry to Null, return
-            // else, merge L and S
-            //     oldchildentry = &(current entry in parent for M)
-            //     move all entries from M to node on left
-            //     discard empty node M, adjust sibling pointers, return
-            InternalPage* parentPage = (InternalPage *) readPage(ixfileHandle, parent, attr);
+		if (leafPage->isHalfFull())
+		{
+			// remove entry
+			if (leafPage->deleteKey(key, attr) != 0)
+			{
+				delete leafPage;
+				return -1;
+			}
+			writePage(ixfileHandle, leafPage, attr);
+			delete leafPage;
+			oldEntryNull = true;
+			return 0;
+		}
+		else
+		{
+			// get a sibling S of L using parent pointer
+			// if S has extra entries
+			//     redistribute evenly between L and S
+			//     find entry in parent for node on right
+			//     replace key value in parent entry by new low-key value in M
+			//     set oldchildentry to Null, return
+			// else, merge L and S
+			//     oldchildentry = &(current entry in parent for M)
+			//     move all entries from M to node on left
+			//     discard empty node M, adjust sibling pointers, return
+			InternalPage* parentPage = (InternalPage *) readPage(ixfileHandle, parent, attr);
 
-            bool isNeighborLeft = false;
-            int keyNum = -1;
-            int neighborNum = -1;
-            parentPage->getKeyNum(key, attr, keyNum);
-            int numEntries = parentPage->getNumEntries();
-            if (keyNum == numEntries) { // last entry, merging left
-                neighborNum = keyNum-1;
-                isNeighborLeft = true;
-            } else if (keyNum < numEntries && keyNum >= 0) {
-                neighborNum = keyNum+1;
-                isNeighborLeft = false;
-            } else {
-                logError("Invalid key entry " + keyNum
-                        + ", num of entries " + numEntries
-                        + ", check getKeyNum method!");
-                return -1;
-            }
+			bool isNeighborLeft = false;
+			int keyNum = -1;
+			int neighborNum = -1;
+			parentPage->getKeyNum(key, attr, keyNum);
+			int numEntries = parentPage->getNumEntries();
+			if (keyNum == numEntries)
+			{ // last entry, merging left
+				neighborNum = keyNum - 1;
+				isNeighborLeft = true;
+			}
+			else if (keyNum < numEntries && keyNum >= 0)
+			{
+				neighborNum = keyNum + 1;
+				isNeighborLeft = false;
+			}
+			else
+			{
+				logError("Invalid key entry " + keyNum
+						+ ", num of entries " + numEntries
+						+ ", check getKeyNum method!");
+				return -1;
+			}
 
-            BTreeKey newKey;
-            BTreeKey oldKey;
-            if (isNeighborLeft) {
-                parentPage->getKey(keyNum, oldKey);
-            } else {
-                parentPage->getKey(neighborNum, oldKey);
-            }
+			BTreeKey newKey;
+			BTreeKey oldKey;
+			if (isNeighborLeft)
+			{
+				parentPage->getKey(keyNum, oldKey);
+			}
+			else
+			{
+				parentPage->getKey(neighborNum, oldKey);
+			}
 
-            PageNum neighborPageNum;
-            parentPage->getPageNum(neighborNum, neighborPageNum);
-            LeafPage* neighborPage = (LeafPage *) readPage(ixfileHandle, neighborPageNum, attr);
-            if (neighborPage->isHalfFull()) {
-                leafPage->redistribute(attr, neighborPage, isNeighborLeft, newKey);
+			PageNum neighborPageNum;
+			parentPage->getPageNum(neighborNum, neighborPageNum);
+			LeafPage* neighborPage = (LeafPage *) readPage(ixfileHandle, neighborPageNum, attr);
+			if (neighborPage->isHalfFull())
+			{
+				leafPage->redistribute(attr, neighborPage, isNeighborLeft, newKey);
 
-                // replace key value in parent entry by newKey
-                parentPage->updateKey(oldKey, newKey, attr);
-                parentPage->deleteEntry(oldKey, attr);
+				// replace key value in parent entry by newKey
+				parentPage->updateKey(oldKey, newKey, attr);
+				parentPage->deleteEntry(oldKey, attr);
 
-                writePage(ixfileHandle, parentPage, attr);
-                delete parentPage;
-                writePage(ixfileHandle, neighborPage, attr);
-                delete neighborPage;
-                writePage(ixfileHandle, leafPage, attr);
-                delete leafPage;
+				writePage(ixfileHandle, parentPage, attr);
+				delete parentPage;
+				writePage(ixfileHandle, neighborPage, attr);
+				delete neighborPage;
+				writePage(ixfileHandle, leafPage, attr);
+				delete leafPage;
 
-                oldEntryNull = true;
-                return 0;
-            } else {
-                // else, merge L and S
-                //     oldchildentry = &(current entry in parent for M)
-                //     move all entries from M to node on left
-                //     discard empty node M, adjust sibling pointers, return
+				oldEntryNull = true;
+				return 0;
+			}
+			else
+			{
+				// else, merge L and S
+				//     oldchildentry = &(current entry in parent for M)
+				//     move all entries from M to node on left
+				//     discard empty node M, adjust sibling pointers, return
 
-            }
-        }
-    }
+			}
+		}
+	}
 
-    return 0;
+	return 0;
 }
 
 RC IndexManager::deleteEntry(IXFileHandle &ixfileHandle, const Attribute &attribute,
 		const void *key, const RID &rid)
 {
-    PageNum root = ixfileHandle.getRootPage();
+	PageNum root = ixfileHandle.getRootPage();
 	BTreeKey bKey(attribute, key, rid);
 
-    bool isNullNode = true;
-    BTreeKey dummyKey;
+	bool isNullNode = true;
+	BTreeKey dummyKey;
 
-    return doDelete(ixfileHandle, attribute, root, root, bKey, isNullNode, dummyKey);
+	return doDelete(ixfileHandle, attribute, root, root, bKey, isNullNode, dummyKey);
 }
 
 RC IndexManager::scan(IXFileHandle &ixfileHandle, const Attribute &attribute, const void *lowKey,
@@ -1103,29 +1183,234 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle, const Attribute &attribute, co
 		IX_ScanIterator &ix_ScanIterator)
 {
 
-	return -1;
+	ix_ScanIterator.pFileHandle = &ixfileHandle;
+	ix_ScanIterator.attribute = attribute;
+	ix_ScanIterator.lowKey = lowKey;
+	ix_ScanIterator.highKey = highKey;
+	ix_ScanIterator.lowKeyInclusive = lowKeyInclusive;
+	ix_ScanIterator.highKeyInclusive = highKeyInclusive;
+
+	ix_ScanIterator.end = false;
+
+	BTreeKey treeKey;
+	findKey(ixfileHandle, lowKey, lowKeyInclusive, attribute, ix_ScanIterator.pageNum,
+			ix_ScanIterator.keyNum, treeKey);
+
+//we need to check treeKey
+	if (ix_ScanIterator.checkEnd(treeKey))
+	{
+		ix_ScanIterator.end = true;
+	}
+	else
+	{
+		//not end
+		ix_ScanIterator.leafPage = (LeafPage*) readPage(ixfileHandle, ix_ScanIterator.pageNum,
+				attribute);
+	}
+	return 0;
+}
+
+void IndexManager::findKey(IXFileHandle& ixfilehandle, const void * key, bool inclusive,
+		const Attribute& attribute, PageNum& pageNum, unsigned& keyNum, BTreeKey & treeKey)
+{
+	PageNum rootPageNum = ixfilehandle.getRootPage();
+	BTreePage * page = readPage(ixfilehandle, rootPageNum, attribute);
+	while (!page->isLeaf())
+	{
+		InternalPage * internalPage = (InternalPage*) page;
+		PageNum childPageNum = internalPage->findSubtree(key, attribute);
+		delete page;
+		page = readPage(ixfilehandle, childPageNum, attribute);
+	}
+
+	LeafPage* leafPage = (LeafPage*) page;
+
+	pageNum = leafPage->pageNum;
+
+	keyNum = 1;
+
+	if (key != NULL)
+	{
+		for (; keyNum <= leafPage->getNumEntries(); keyNum++)
+		{
+			leafPage->getKey(keyNum, treeKey);
+			int comp = treeKey.compare(key, attribute);
+			if (comp == 0 && inclusive)
+			{
+				//we get the key
+				break;
+			}
+			else if (comp > 0)
+			{
+				//we also get the key
+				break;
+			}
+		}
+	}
+
+	delete leafPage;
+
 }
 
 void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const
 {
+	BTreePage * rootPage = readPage(ixfileHandle, ixfileHandle.getRootPage(), attribute);
+
+	printBTreePage(ixfileHandle, rootPage, attribute, 0);
+
+}
+
+void IndexManager::printBTreePage(IXFileHandle &ixfileHandle, BTreePage * page,
+		const Attribute& attribute, int height) const
+{
+	padding(height);
+	cout << "{" << endl;
+
+	padding(height);
+	cout << "\"keys\":";
+	cout << "[";
+
+	for (int i = 1; i <= page->getNumEntries(); i++)
+	{
+		BTreeKey key;
+		page->getKey(i, key);
+		key.print(attribute);
+		if (i != page->getNumEntries())
+		{
+			cout << ",";
+		}
+	}
+
+	cout << "]";
+
+	if (!page->isLeaf())
+	{
+		cout << "," << endl;
+
+		padding(height);
+		cout << "\"children\":[" << endl;
+
+		InternalPage * internalPage = (InternalPage*) page;
+		for (int i = 0; i <= page->getNumEntries(); i++)
+		{
+			PageNum childPageNum;
+			internalPage->getPageNum(i, childPageNum);
+			BTreePage * childPage = readPage(ixfileHandle, childPageNum, attribute);
+
+			printBTreePage(ixfileHandle, childPage, attribute, height + 1);
+			if (i != page->getNumEntries())
+			{
+				cout << ",";
+			}
+			cout << endl;
+		}
+
+		padding(height);
+		cout << "]" << endl;
+	}
+
+	padding(height);
+	cout << "}";
+
+	delete page;
+
+}
+
+void IndexManager::padding(int height) const
+{
+	for (int i = 0; i < height; i++)
+	{
+		cout << "\t";
+	}
 }
 
 IX_ScanIterator::IX_ScanIterator()
 {
+	pFileHandle = NULL;
+	pageNum = 0;
+	keyNum = 0;
+	leafPage = NULL;
+	lowKey = NULL;
+	highKey = NULL;
+	lowKeyInclusive = false;
+	highKeyInclusive = false;
+
+	end = false;
 }
 
 IX_ScanIterator::~IX_ScanIterator()
 {
 }
 
+RC IX_ScanIterator::getNextKeyWithinPage(BTreeKey& key)
+{
+	if (keyNum > leafPage->getNumEntries())
+	{
+		return -1;
+	}
+	leafPage->getKey(keyNum++, key);
+	return 0;
+}
+
+bool IX_ScanIterator::checkEnd(const BTreeKey& key)
+{
+	if (highKey != NULL)
+	{
+		int comp = key.compare(highKey, attribute);
+		if ((comp == 0 && !highKeyInclusive) || comp > 0)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
 RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 {
-	return -1;
+	if (end)
+	{
+		return -1;
+	}
+
+	BTreeKey treeKey;
+	if (getNextKeyWithinPage(treeKey) != 0)
+	{
+		//load next page
+		pageNum = leafPage->getSibling();
+		if (pageNum == 0)
+		{
+			//no more sibling page
+			end = true;
+			return -1;
+		}
+		delete leafPage;
+		leafPage = (LeafPage *) IndexManager::instance()->readPage(*pFileHandle, pageNum,
+				attribute);
+		//start over
+		keyNum = 1;
+		getNextKeyWithinPage(treeKey);
+	}
+
+//check key
+	if (checkEnd(treeKey))
+	{
+		end = true;
+		return -1;
+	}
+
+	rid = treeKey.rid;
+	copyAttributeData(key, 0, attribute, treeKey.value, 0);
+	return 0;
 }
 
 RC IX_ScanIterator::close()
 {
-	return -1;
+	if (leafPage != NULL)
+	{
+		delete leafPage;
+		leafPage = NULL;
+	}
+	return 0;
 }
 
 IXFileHandle::IXFileHandle()
