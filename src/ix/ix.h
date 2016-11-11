@@ -91,6 +91,11 @@ public:
 
 	}
 
+    vector<BTreeKey>& getKeys()
+    {
+        return keys;
+    }
+
 	ushort getSpaceUsed()
 	{
 		return spaceUsed;
@@ -101,6 +106,15 @@ public:
 		return numEntries;
 	}
 
+	virtual void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
+	virtual void insertKey(const BTreeKey& key, const Attribute& attr);
+	virtual void insertKey(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
+    virtual void getKeyNum(const BTreeKey& key, const Attribute& attr, int &num);
+	virtual void getPageNum(int num, PageNum& pageNum);
+	virtual RC deleteKey(const BTreeKey& key, const Attribute& attr);
+    virtual void clear();
+    virtual RC redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey);
+    virtual RC merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
 };
 
 class InternalPage: public BTreePage
@@ -132,9 +146,11 @@ public:
 
 	void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
 
-	void deleteKey(const BTreeKey& key, const Attribute& attr);
+	RC deleteKey(const BTreeKey& key, const Attribute& attr);
 
 	void insertKey(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
+
+    void getKeyNum(const BTreeKey& key, const Attribute& attr, int &num);
 
 	ushort entrySize(ushort offset, const Attribute& attr)
 	{
@@ -163,6 +179,15 @@ public:
 		return pageNums;
 	}
 
+    void clear()
+    {
+        free(data);
+        reset();
+    }
+
+    RC redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey);
+
+    RC merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
 };
 
 class LeafPage: public BTreePage
@@ -184,7 +209,9 @@ public:
 
 	void insertKey(const BTreeKey& key, const Attribute& attr);
 
-	void deleteKey(const BTreeKey& key, const Attribute& attr);
+	RC deleteKey(const BTreeKey& key, const Attribute& attr);
+
+    void getKeyNum(const BTreeKey& key, const Attribute& attr, int &num) {/* FIXME */ return -1;};
 
 	bool isLeaf()
 	{
@@ -206,6 +233,15 @@ public:
 		this->siblingPage = pageNum;
 	}
 
+    void clear()
+    {
+        free(data);
+        reset();
+    }
+
+    RC redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey);
+
+    RC merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
 };
 
 class IndexManager
@@ -252,6 +288,9 @@ protected:
 
 private:
 	static IndexManager *_index_manager;
+
+    RC doDelete(IXFileHandle &ixfileHandle, const Attribute& attr, PageNum parent, PageNum node,
+            const BTreeKey &key, bool oldEntryNull, BTreeKey &oldEntryKey);
 };
 
 class IX_ScanIterator

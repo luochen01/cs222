@@ -1,8 +1,7 @@
 
 include ../makefile.inc
 
-all: libix.a ixtest_page 
-#ixtest_01 ixtest_02 ixtest_03 ixtest_04 ixtest_05 ixtest_06 ixtest_07 ixtest_08 ixtest_09 ixtest_10 ixtest_11 ixtest_12 ixtest_13 ixtest_14 ixtest_15 ixtest_extra_01 ixtest_extra_02
+all: libix.a ixtest_page ixtest_01 ixtest_02 ixtest_03 ixtest_04 ixtest_05 ixtest_06 ixtest_07 ixtest_08 ixtest_09 ixtest_10 ixtest_11 ixtest_12 ixtest_13 ixtest_14 ixtest_15 ixtest_extra_01 ixtest_extra_02
 
 # lib file dependencies
 libix.a: libix.a(ix.o)  # and possibly other .o files
@@ -57,5 +56,5 @@ $(CODEROOT)/rbf/librbf.a:
 
 .PHONY: clean
 clean:
-	-rm *.o *.a ixtest_01 ixtest_02 ixtest_03 ixtest_04 ixtest_05 ixtest_06 ixtest_07 ixtest_08 ixtest_09 ixtest_10 ixtest_11 ixtest_12 ixtest_13 ixtest_14 ixtest_15 ixtest_extra_01 ixtest_extra_02 
+	-rm *.o *.a ixtest_page ixtest_01 ixtest_02 ixtest_03 ixtest_04 ixtest_05 ixtest_06 ixtest_07 ixtest_08 ixtest_09 ixtest_10 ixtest_11 ixtest_12 ixtest_13 ixtest_14 ixtest_15 ixtest_extra_01 ixtest_extra_02 
 	$(MAKE) -C $(CODEROOT)/rbf clean
