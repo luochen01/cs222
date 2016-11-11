@@ -13,9 +13,18 @@ class IXFileHandle;
 
 class BTreeKey
 {
+private:
+	ushort copyValue(const Attribute& attr, const void * value);
+
 public:
 	void * value;
 	RID rid;
+
+	BTreeKey();
+
+	BTreeKey(const Attribute& attr, const void * value, const RID& rid);
+
+	void free();
 
 	/**
 	 * < 0: this < rhs
@@ -33,6 +42,10 @@ public:
 
 	ushort keySize(const Attribute& attr) const;
 
+	ushort readFrom(const Attribute& attr, const void * data);
+
+	ushort writeTo(const Attribute& attr, void * data) const;
+
 };
 
 /**
@@ -43,6 +56,10 @@ public:
 class BTreePage
 {
 protected:
+	friend class IndexManager;
+
+	PageNum pageNum;
+
 	void * data;
 
 	vector<BTreeKey> keys;
@@ -62,7 +79,7 @@ protected:
 	ushort writeKey(const BTreeKey& key, ushort offset, const Attribute& attr);
 
 public:
-	BTreePage(void * data, int headerSize);
+	BTreePage(void * data, PageNum pageNum, int headerSize);
 
 	virtual void initialize(const Attribute& attr);
 
@@ -75,7 +92,7 @@ public:
 	virtual bool isLeaf() = 0;
 
 	//is there enough space to hold a new entry?
-	bool isFull(const Attribute& attr, const void* value);
+	virtual bool isFull(const BTreeKey& key, const Attribute& attr) = 0;
 
 	bool isHalfFull();
 
@@ -88,7 +105,7 @@ public:
 
 	virtual ~BTreePage()
 	{
-
+		free(data);
 	}
 
     vector<BTreeKey>& getKeys()
@@ -106,15 +123,6 @@ public:
 		return numEntries;
 	}
 
-	virtual void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
-	virtual void insertKey(const BTreeKey& key, const Attribute& attr);
-	virtual void insertKey(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
-    virtual void getKeyNum(const BTreeKey& key, const Attribute& attr, int &num);
-	virtual void getPageNum(int num, PageNum& pageNum);
-	virtual RC deleteKey(const BTreeKey& key, const Attribute& attr);
-    virtual void clear();
-    virtual RC redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey);
-    virtual RC merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
 };
 
 class InternalPage: public BTreePage
@@ -134,7 +142,9 @@ protected:
 
 public:
 
-	InternalPage(void * data);
+	InternalPage();
+
+	InternalPage(void * data, PageNum pageNum);
 
 	void initialize(const Attribute& attr);
 
@@ -144,11 +154,22 @@ public:
 
 	void getPageNum(int num, PageNum& pageNum);
 
+	PageNum findSubtree(const BTreeKey & key, const Attribute& attr);
+
 	void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
 
-	RC deleteKey(const BTreeKey& key, const Attribute& attr);
+	RC deleteEntry(const BTreeKey& key, const Attribute& attr);
 
-	void insertKey(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
+	void insertEntry(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
+
+	void appendEntry(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
+
+	void appendPageNum(PageNum pageNum, const Attribute& attr);
+
+	bool isFull(const BTreeKey & key, const Attribute& attribute);
+
+	void distributeTo(InternalPage& rhs, const Attribute& attribute, BTreeKey& newKey,
+			PageNum& newPage);
 
     void getKeyNum(const BTreeKey& key, const Attribute& attr, int &num);
 
@@ -179,15 +200,9 @@ public:
 		return pageNums;
 	}
 
-    void clear()
-    {
-        free(data);
-        reset();
-    }
+    void redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey);
 
-    RC redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey);
-
-    RC merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
+    void merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
 };
 
 class LeafPage: public BTreePage
@@ -198,8 +213,9 @@ protected:
 	PageNum siblingPage;
 
 public:
+	LeafPage();
 
-	LeafPage(void * data);
+	LeafPage(void * data, PageNum pageNum);
 
 	void initialize(const Attribute& attr);
 
@@ -207,11 +223,23 @@ public:
 
 	void flush(const Attribute& attr);
 
+	void getPageNum(int num, PageNum& pageNum);
+
 	void insertKey(const BTreeKey& key, const Attribute& attr);
 
-	RC deleteKey(const BTreeKey& key, const Attribute& attr);
+	void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
 
-    void getKeyNum(const BTreeKey& key, const Attribute& attr, int &num) {/* FIXME */ return -1;};
+    RC deleteKey(const BTreeKey& key, const Attribute& attr);
+
+	void appendKey(const BTreeKey& key, const Attribute& attr);
+
+	//void deleteKey(const BTreeKey& key, const Attribute& attr);
+
+	bool containsKey(const BTreeKey& key, const Attribute& attr);
+
+	bool isFull(const BTreeKey& key, const Attribute& attr);
+
+	void distributeTo(LeafPage& rhs, const Attribute& attr, const BTreeKey& key, BTreeKey& newKey);
 
 	bool isLeaf()
 	{
@@ -233,15 +261,9 @@ public:
 		this->siblingPage = pageNum;
 	}
 
-    void clear()
-    {
-        free(data);
-        reset();
-    }
+    void redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey);
 
-    RC redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey);
-
-    RC merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
+    void merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
 };
 
 class IndexManager
@@ -249,10 +271,17 @@ class IndexManager
 private:
 	void * buffer;
 
+	RC doInsert(IXFileHandle & ixfileHandle, BTreePage * page, const Attribute& attribute,
+			const BTreeKey& key, bool& splitted, BTreeKey & newKey, PageNum & newPage);
+
 public:
 	static IndexManager* instance();
 
-	BTreePage* readPage(IXFileHandle & fileHandle, PageNum pageNum);
+	BTreePage* readPage(IXFileHandle & fileHandle, PageNum pageNum, const Attribute& attr);
+
+	void writePage(IXFileHandle & fileHandle, BTreePage* page, const Attribute& attr);
+
+	void appendPage(IXFileHandle & fileHandle, BTreePage* page, const Attribute& attr);
 
 	// Create an index file.
 	RC createFile(const string &fileName);
@@ -290,7 +319,7 @@ private:
 	static IndexManager *_index_manager;
 
     RC doDelete(IXFileHandle &ixfileHandle, const Attribute& attr, PageNum parent, PageNum node,
-            const BTreeKey &key, bool oldEntryNull, BTreeKey &oldEntryKey);
+            const BTreeKey &key, bool& oldEntryNull, BTreeKey oldEntryKey);
 };
 
 class IX_ScanIterator
