@@ -47,6 +47,8 @@ public:
 	ushort writeTo(const Attribute& attr, void * data) const;
 
     void copyFrom(const Attribute& attr, const BTreeKey &rhs);
+
+	void print(const Attribute& attr) const;
 };
 
 /**
@@ -109,10 +111,10 @@ public:
 		free(data);
 	}
 
-    vector<BTreeKey>& getKeys()
-    {
-        return keys;
-    }
+	vector<BTreeKey>& getKeys()
+	{
+		return keys;
+	}
 
 	ushort getSpaceUsed()
 	{
@@ -159,6 +161,8 @@ public:
 
 	PageNum findSubtree(const BTreeKey & key, const Attribute& attr);
 
+	PageNum findSubtree(const void * key, const Attribute& attr);
+
 	void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
 
 	RC deleteEntry(const BTreeKey& key, const Attribute& attr);
@@ -178,7 +182,7 @@ public:
 	void distributeTo(InternalPage& rhs, const Attribute& attribute, BTreeKey& newKey,
 			PageNum& newPage);
 
-    void getKeyNum(const BTreeKey& key, const Attribute& attr, int &num);
+	void getKeyNum(const BTreeKey& key, const Attribute& attr, int &num);
 
 	ushort entrySize(ushort offset, const Attribute& attr)
 	{
@@ -219,6 +223,11 @@ public:
 
 
     void mergeLeaves(const Attribute& attr, BTreePage *leftPage, BTreePage *rightPage);
+
+	//void redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor,
+	//		BTreeKey &newKey);
+
+	//void merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
 };
 
 class LeafPage: public BTreePage
@@ -245,7 +254,7 @@ public:
 
 	void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
 
-    RC deleteKey(const BTreeKey& key, const Attribute& attr);
+	RC deleteKey(const BTreeKey& key, const Attribute& attr);
 
 	void appendKey(const BTreeKey& key, const Attribute& attr);
 
@@ -277,27 +286,22 @@ public:
 		this->siblingPage = pageNum;
 	}
 
-    void redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey);
+	void redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor,
+			BTreeKey &newKey);
 
-    void merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
+	void merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
 };
 
 class IndexManager
 {
-private:
-	void * buffer;
-
-	RC doInsert(IXFileHandle & ixfileHandle, BTreePage * page, const Attribute& attribute,
-			const BTreeKey& key, bool& splitted, BTreeKey & newKey, PageNum & newPage);
-
 public:
 	static IndexManager* instance();
 
-	BTreePage* readPage(IXFileHandle & fileHandle, PageNum pageNum, const Attribute& attr);
+	BTreePage* readPage(IXFileHandle & ixfileHandle, PageNum pageNum, const Attribute& attr) const;
 
-	void writePage(IXFileHandle & fileHandle, BTreePage* page, const Attribute& attr);
+	void writePage(IXFileHandle & ixfileHandle, BTreePage* page, const Attribute& attr);
 
-	void appendPage(IXFileHandle & fileHandle, BTreePage* page, const Attribute& attr);
+	void appendPage(IXFileHandle & ixfileHandle, BTreePage* page, const Attribute& attr);
 
 	// Create an index file.
 	RC createFile(const string &fileName);
@@ -332,15 +336,48 @@ protected:
 	~IndexManager();
 
 private:
+	void * buffer;
+
 	static IndexManager *_index_manager;
 
     RC doDelete(IXFileHandle &ixfileHandle, const Attribute &attr,
             PageNum parentPageNum, PageNum currentPageNum,
             const BTreeKey &key, bool &oldEntryNull, int &oldEntryNum);
+
+	RC doInsert(IXFileHandle & ixfileHandle, BTreePage * page, const Attribute& attribute,
+			const BTreeKey& key, bool& splitted, BTreeKey & newKey, PageNum & newPage);
+
+	void findKey(IXFileHandle& ixfilehandle, const void * key, bool inclusive,
+			const Attribute& attribute, PageNum& pageNum, unsigned& keyNum, BTreeKey & treeKey);
+
+	void printBTreePage(IXFileHandle &ixfileHandle, BTreePage* page, const Attribute &attribute,
+			int height) const;
+
+	void padding(int height) const;
+
 };
 
 class IX_ScanIterator
 {
+private:
+	friend class IndexManager;
+
+	IXFileHandle * pFileHandle;
+	PageNum pageNum;
+	unsigned keyNum;
+	LeafPage * leafPage;
+	Attribute attribute;
+	const void * lowKey;
+	const void * highKey;
+	bool lowKeyInclusive;
+	bool highKeyInclusive;
+
+	bool end;
+
+	RC getNextKeyWithinPage(BTreeKey& key);
+
+	bool checkEnd(const BTreeKey& key);
+
 public:
 
 	// Constructor
