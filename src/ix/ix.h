@@ -46,6 +46,7 @@ public:
 
 	ushort writeTo(const Attribute& attr, void * data) const;
 
+    void copyFrom(const Attribute& attr, const BTreeKey &rhs);
 };
 
 /**
@@ -154,6 +155,8 @@ public:
 
 	void getPageNum(int num, PageNum& pageNum);
 
+    void setPageNum(int num, PageNum pageNum);
+
 	PageNum findSubtree(const BTreeKey & key, const Attribute& attr);
 
 	void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
@@ -161,6 +164,10 @@ public:
 	RC deleteEntry(const BTreeKey& key, const Attribute& attr);
 
 	void insertEntry(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
+
+    void insertHeadKeyAndPageNum(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
+
+    void deleteHeadKeyAndPageNum(const Attribute& attr);
 
 	void appendEntry(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
 
@@ -200,9 +207,18 @@ public:
 		return pageNums;
 	}
 
-    void redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor, BTreeKey &newKey);
+    void getChildNeighborNum(const int childNum, int &neighborNum, bool &isLeftNeighbor);
 
-    void merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
+    void redistributeInternals(const Attribute& attr, BTreeKey &key,
+            BTreePage *leftPage, BTreePage *rightPage);
+
+    void redistributeLeaves(const Attribute& attr, BTreePage *leftPage, BTreePage *rightPage);
+
+    void mergeInternals(const Attribute& attr, BTreeKey &key,
+            BTreePage *leftPage, BTreePage *rightPage);
+
+
+    void mergeLeaves(const Attribute& attr, BTreePage *leftPage, BTreePage *rightPage);
 };
 
 class LeafPage: public BTreePage
@@ -318,8 +334,9 @@ protected:
 private:
 	static IndexManager *_index_manager;
 
-    RC doDelete(IXFileHandle &ixfileHandle, const Attribute& attr, PageNum parent, PageNum node,
-            const BTreeKey &key, bool& oldEntryNull, BTreeKey oldEntryKey);
+    RC doDelete(IXFileHandle &ixfileHandle, const Attribute &attr,
+            PageNum parentPageNum, PageNum currentPageNum,
+            const BTreeKey &key, bool &oldEntryNull, int &oldEntryNum);
 };
 
 class IX_ScanIterator
