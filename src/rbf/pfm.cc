@@ -186,6 +186,7 @@ RC PagedFileManager::openFile(const string &fileName, FileHandle &fileHandle)
 {
 	if (!exists(fileName))
 	{
+		fileHandle.opened = false;
 		logError("Fail to open file: " + fileName + ", because it does not exist!");
 		return -1;
 	}

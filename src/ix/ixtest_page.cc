@@ -77,10 +77,10 @@ RC testCase_LeafPage()
 	BTreeKey key;
 	assert(newLeafPage.getNumEntries() == 2);
 
-	newLeafPage.getKey(1, key);
+	key = newLeafPage.getKey(1);
 	assert(key.compare(key2, attr) == 0);
 
-	newLeafPage.getKey(2, key);
+	key = newLeafPage.getKey(2);
 	assert(key.compare(key3, attr) == 0);
 
 	assert(newLeafPage.getSibling() == 10);
@@ -160,12 +160,12 @@ RC testCase_InternalPage()
 	PageNum pageNum;
 	assert(newPage.getNumEntries() == 2);
 
-	newPage.getKey(1, key);
-	newPage.getPageNum(1, pageNum);
+	key = newPage.getKey(1);
+	pageNum = newPage.getPageNum(1);
 	assert(key.compare(key2, attr) == 0 && pageNum == 2);
 
-	newPage.getKey(2, key);
-	newPage.getPageNum(2, pageNum);
+	key = newPage.getKey(2);
+	pageNum = newPage.getPageNum(2);
 	assert(key.compare(key3, attr) == 0 && pageNum == 3);
 
 	cout << "Test Case Internal Page Success." << endl;

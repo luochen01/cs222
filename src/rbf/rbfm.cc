@@ -99,7 +99,7 @@ unsigned attributeSize(const Attribute& attr, const void * data)
 		size = 4;
 		break;
 	case TypeVarChar:
-		read(data, size, sizeof(int));
+		read(data, size, 0);
 		size += sizeof(int);
 		break;
 	}

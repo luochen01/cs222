@@ -24,6 +24,8 @@ public:
 
 	BTreeKey(const Attribute& attr, const void * value, const RID& rid);
 
+	BTreeKey(const Attribute& attr, const void * value);
+
 	void free();
 
 	/**
@@ -46,7 +48,7 @@ public:
 
 	ushort writeTo(const Attribute& attr, void * data) const;
 
-    void copyFrom(const Attribute& attr, const BTreeKey &rhs);
+	void copyFrom(const Attribute& attr, const BTreeKey &rhs);
 
 	void print(const Attribute& attr) const;
 };
@@ -90,7 +92,7 @@ public:
 
 	virtual void reset();
 
-	void getKey(int num, BTreeKey& key);
+	BTreeKey getKey(int num);
 
 	virtual bool isLeaf() = 0;
 
@@ -131,6 +133,7 @@ public:
 class InternalPage: public BTreePage
 {
 protected:
+	friend class IndexManager;
 	vector<PageNum> pageNums;
 
 	ushort readPageNum(PageNum& pageNum, ushort offset);
@@ -155,13 +158,11 @@ public:
 
 	void flush(const Attribute& attr);
 
-	void getPageNum(int num, PageNum& pageNum);
+	PageNum getPageNum(int num);
 
-    void setPageNum(int num, PageNum pageNum);
+	void setPageNum(int num, PageNum pageNum);
 
 	PageNum findSubtree(const BTreeKey & key, const Attribute& attr);
-
-	PageNum findSubtree(const void * key, const Attribute& attr);
 
 	void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
 
@@ -169,9 +170,9 @@ public:
 
 	void insertEntry(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
 
-    void insertHeadKeyAndPageNum(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
+	void insertHeadKeyAndPageNum(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
 
-    void deleteHeadKeyAndPageNum(const Attribute& attr);
+	void deleteHeadKeyAndPageNum(const Attribute& attr);
 
 	void appendEntry(const BTreeKey& key, PageNum pageNum, const Attribute& attr);
 
@@ -182,7 +183,7 @@ public:
 	void distributeTo(InternalPage& rhs, const Attribute& attribute, BTreeKey& newKey,
 			PageNum& newPage);
 
-	void getKeyNum(const BTreeKey& key, const Attribute& attr, int &num);
+	int getKeyNum(const BTreeKey& key, const Attribute& attr);
 
 	ushort entrySize(ushort offset, const Attribute& attr)
 	{
@@ -211,18 +212,13 @@ public:
 		return pageNums;
 	}
 
-    void getChildNeighborNum(const int childNum, int &neighborNum, bool &isLeftNeighbor);
+	void getChildNeighborNum(const int childNum, int &neighborNum, bool &isLeftNeighbor);
 
-    void redistributeInternals(const Attribute& attr, BTreeKey &key,
-            BTreePage *leftPage, BTreePage *rightPage);
+	void redistributeInternals(const Attribute& attr, BTreeKey &key, InternalPage *leftPage,
+			InternalPage *rightPage);
 
-    void redistributeLeaves(const Attribute& attr, BTreePage *leftPage, BTreePage *rightPage);
-
-    void mergeInternals(const Attribute& attr, BTreeKey &key,
-            BTreePage *leftPage, BTreePage *rightPage);
-
-
-    void mergeLeaves(const Attribute& attr, BTreePage *leftPage, BTreePage *rightPage);
+	void mergeInternals(const Attribute& attr, BTreeKey &key, InternalPage *leftPage,
+			InternalPage *rightPage);
 
 	//void redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor,
 	//		BTreeKey &newKey);
@@ -248,13 +244,11 @@ public:
 
 	void flush(const Attribute& attr);
 
-	void getPageNum(int num, PageNum& pageNum);
-
 	void insertKey(const BTreeKey& key, const Attribute& attr);
 
 	void updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr);
 
-	RC deleteKey(const BTreeKey& key, const Attribute& attr);
+	int deleteKey(const BTreeKey& key, const Attribute& attr);
 
 	void appendKey(const BTreeKey& key, const Attribute& attr);
 
@@ -303,6 +297,8 @@ public:
 
 	void appendPage(IXFileHandle & ixfileHandle, BTreePage* page, const Attribute& attr);
 
+	void removeIterator(IX_ScanIterator* iterator);
+
 	// Create an index file.
 	RC createFile(const string &fileName);
 
@@ -336,24 +332,30 @@ protected:
 	~IndexManager();
 
 private:
-	void * buffer;
-
 	static IndexManager *_index_manager;
 
-    RC doDelete(IXFileHandle &ixfileHandle, const Attribute &attr,
-            PageNum parentPageNum, PageNum currentPageNum,
-            const BTreeKey &key, bool &oldEntryNull, int &oldEntryNum);
+	vector<IX_ScanIterator*> iterators;
+
+	void * buffer;
+
+	RC doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTreePage* parent,
+			BTreePage * current, const BTreeKey &key, bool &oldEntryNull, int &oldEntryNum);
 
 	RC doInsert(IXFileHandle & ixfileHandle, BTreePage * page, const Attribute& attribute,
 			const BTreeKey& key, bool& splitted, BTreeKey & newKey, PageNum & newPage);
 
-	void findKey(IXFileHandle& ixfilehandle, const void * key, bool inclusive,
+	LeafPage* findKey(IXFileHandle& ixfilehandle, const void * key, bool inclusive,
 			const Attribute& attribute, PageNum& pageNum, unsigned& keyNum, BTreeKey & treeKey);
 
 	void printBTreePage(IXFileHandle &ixfileHandle, BTreePage* page, const Attribute &attribute,
 			int height) const;
 
 	void padding(int height) const;
+
+	void updateIterator(IXFileHandle& ixfileHandle, PageNum pageNum, unsigned keyNum,
+			const Attribute& attr);
+
+	BTreePage * getRootPage(IXFileHandle & ixfileHandle, const Attribute& attribute);
 
 };
 
