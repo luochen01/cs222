@@ -320,7 +320,7 @@ void InternalPage::distributeTo(InternalPage& rhs, const Attribute& attribute, B
 	pagesIt++;
 
 	int size = PAGE_HEADER_SIZE;
-	while (size < spaceUsed / 2)
+	while (size < PAGE_SIZE / 2)
 	{
 		size += entrySize(*(keysIt++), *(pagesIt++), attribute);
 	}
@@ -710,7 +710,7 @@ void LeafPage::distributeTo(LeafPage& rhs, const Attribute& attr, const BTreeKey
 	it++;
 
 	int size = PAGE_HEADER_SIZE;
-	while (size < spaceUsed / 2)
+	while (size < PAGE_HEADER_SIZE / 2)
 	{
 		size += (*it).keySize(attr);
 		it++;
@@ -975,7 +975,7 @@ void IndexManager::appendPage(IXFileHandle & fileHandle, BTreePage* page, const 
 	page->pageNum = fileHandle.getNumberOfPages() - 1;
 }
 
-void IndexManager::removeIterator(IX_ScanIterator* iterator)
+void IndexManager::deleteIterator(IX_ScanIterator* iterator)
 {
 	for (vector<IX_ScanIterator*>::iterator it = iterators.begin(); it != iterators.end(); it++)
 	{
@@ -1205,8 +1205,7 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 		InternalPage* currentPage = (InternalPage *) current;
 
 		//TODO: changed by luochen
-		PageNum childPageNum;
-		currentPage->findSubtree(key, attr);
+		PageNum childPageNum = currentPage->findSubtree(key, attr);
 		InternalPage* childPage = (InternalPage*) readPage(ixfileHandle, childPageNum, attr);
 
 		if (doDelete(ixfileHandle, attr, currentPage, childPage, key, oldEntryNull, oldEntryNum)
@@ -1345,7 +1344,7 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 //     oldchildentry = &(current entry in parent for M)
 //     move all entries from M to node on left
 //     discard empty node M, adjust sibling pointers, return
-			InternalPage* parentPage = (InternalPage *) parentPage;
+			InternalPage* parentPage = (InternalPage *) parent;
 
 			int currentNum = parentPage->getKeyNum(key, attr);
 			int neighborNum = -1;
