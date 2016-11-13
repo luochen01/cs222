@@ -297,8 +297,6 @@ public:
 
 	void appendPage(IXFileHandle & ixfileHandle, BTreePage* page, const Attribute& attr);
 
-	void removeIterator(IX_ScanIterator* iterator);
-
 	// Create an index file.
 	RC createFile(const string &fileName);
 
@@ -326,6 +324,8 @@ public:
 
 	// Print the B+ tree in pre-order (in a JSON record format)
 	void printBtree(IXFileHandle &ixfileHandle, const Attribute &attribute) const;
+
+	void deleteIterator(IX_ScanIterator* iterator);
 
 protected:
 	IndexManager();

@@ -81,10 +81,19 @@ void BTreeKey::free()
 
 ushort BTreeKey::copyValue(const Attribute& attr, const void * value)
 {
-	ushort size = attributeSize(attr, value);
-	this->value = new byte[size];
-	memcpy(this->value, value, size);
-	return size;
+	if (value == NULL)
+	{
+		this->value = NULL;
+		return 0;
+	}
+	else
+	{
+		ushort size = attributeSize(attr, value);
+		this->value = new byte[size];
+		memcpy(this->value, value, size);
+		return size;
+	}
+
 }
 
 int BTreeKey::compare(const void * rhs, const Attribute& attr) const
@@ -179,7 +188,7 @@ void BTreeKey::print(const Attribute& attr) const
 		break;
 	case TypeVarChar:
 		readString(value, svalue, 0);
-		cout << svalue;
+		cout << svalue[0];
 		break;
 	}
 
@@ -320,10 +329,13 @@ void InternalPage::distributeTo(InternalPage& rhs, const Attribute& attribute, B
 	pagesIt++;
 
 	int size = PAGE_HEADER_SIZE;
-	while (size < spaceUsed / 2)
+	while (size < PAGE_SIZE / 2)
 	{
 		size += entrySize(*(keysIt++), *(pagesIt++), attribute);
 	}
+
+	size -= entrySize(*(--keysIt), *(--pagesIt), attribute);
+
 	vector<BTreeKey>::iterator eraseKeysBegin = keysIt;
 	vector<PageNum>::iterator erasePagesBegin = pagesIt;
 
@@ -397,7 +409,10 @@ void InternalPage::setPageNum(int num, PageNum pageNum)
 
 PageNum InternalPage::findSubtree(const BTreeKey & key, const Attribute& attr)
 {
-
+	if (key.value == NULL)
+	{
+		return pageNums[0];
+	}
 	for (int i = 1; i <= numEntries; i++)
 	{
 		int comp = keys[i].compare(key, attr);
@@ -710,11 +725,14 @@ void LeafPage::distributeTo(LeafPage& rhs, const Attribute& attr, const BTreeKey
 	it++;
 
 	int size = PAGE_HEADER_SIZE;
-	while (size < spaceUsed / 2)
+	while (size < PAGE_SIZE / 2)
 	{
 		size += (*it).keySize(attr);
 		it++;
 	}
+
+	size -= (*(--it)).keySize(attr);
+
 	vector<BTreeKey>::iterator eraseBegin = it;
 
 	newKey.copyFrom(attr, *it);
@@ -975,7 +993,7 @@ void IndexManager::appendPage(IXFileHandle & fileHandle, BTreePage* page, const 
 	page->pageNum = fileHandle.getNumberOfPages() - 1;
 }
 
-void IndexManager::removeIterator(IX_ScanIterator* iterator)
+void IndexManager::deleteIterator(IX_ScanIterator* iterator)
 {
 	for (vector<IX_ScanIterator*>::iterator it = iterators.begin(); it != iterators.end(); it++)
 	{
@@ -1205,8 +1223,7 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 		InternalPage* currentPage = (InternalPage *) current;
 
 		//TODO: changed by luochen
-		PageNum childPageNum;
-		currentPage->findSubtree(key, attr);
+		PageNum childPageNum = currentPage->findSubtree(key, attr);
 		InternalPage* childPage = (InternalPage*) readPage(ixfileHandle, childPageNum, attr);
 
 		if (doDelete(ixfileHandle, attr, currentPage, childPage, key, oldEntryNull, oldEntryNum)
@@ -1345,7 +1362,7 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 //     oldchildentry = &(current entry in parent for M)
 //     move all entries from M to node on left
 //     discard empty node M, adjust sibling pointers, return
-			InternalPage* parentPage = (InternalPage *) parentPage;
+			InternalPage* parentPage = (InternalPage *) parent;
 
 			int currentNum = parentPage->getKeyNum(key, attr);
 			int neighborNum = -1;
@@ -1467,6 +1484,7 @@ LeafPage* IndexManager::findKey(IXFileHandle& ixfilehandle, const void * key, bo
 		InternalPage * internalPage = (InternalPage*) page;
 		BTreeKey keyWrapper(attribute, key);
 		PageNum childPageNum = internalPage->findSubtree(keyWrapper, attribute);
+		keyWrapper.free();
 		delete page;
 		page = readPage(ixfilehandle, childPageNum, attribute);
 	}
@@ -1508,6 +1526,7 @@ void IndexManager::printBtree(IXFileHandle &ixfileHandle, const Attribute &attri
 	BTreePage * rootPage = readPage(ixfileHandle, ixfileHandle.getRootPage(), attribute);
 
 	printBTreePage(ixfileHandle, rootPage, attribute, 0);
+	cout << endl;
 
 }
 
@@ -1517,7 +1536,7 @@ void IndexManager::printBTreePage(IXFileHandle &ixfileHandle, BTreePage * page,
 	padding(height);
 	cout << "{";
 
-	if (!page->isLeaf())
+	if (page->pageNum == ixfileHandle.getRootPage())
 	{
 		cout << endl;
 		padding(height);
@@ -1560,10 +1579,14 @@ void IndexManager::printBTreePage(IXFileHandle &ixfileHandle, BTreePage * page,
 		}
 
 		padding(height);
-		cout << "]" << endl;
+		cout << "]";
+	}
+	if (page->pageNum == ixfileHandle.getRootPage())
+	{
+		cout << endl;
+		padding(height);
 	}
 
-	padding(height);
 	cout << "}";
 
 	delete page;
@@ -1574,7 +1597,7 @@ void IndexManager::padding(int height) const
 {
 	for (int i = 0; i < height; i++)
 	{
-		cout << "\t";
+		cout << "  ";
 	}
 }
 
