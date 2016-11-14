@@ -223,12 +223,7 @@ public:
 	void mergeToRoot(const Attribute& attr, BTreeKey &key, InternalPage *leftPage,
 			InternalPage *rightPage);
 
-	//void redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor,
-	//		BTreeKey &newKey);
-
-	//void merge(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor);
-
-    void replaceVectors(const Attribute& attr, vector<BTreeKey>& newKeys, vector<PageNum>& newPNs);
+	void replaceVectors(const Attribute& attr, vector<BTreeKey>& newKeys, vector<PageNum>& newPNs);
 };
 
 class LeafPage: public BTreePage
@@ -257,8 +252,6 @@ public:
 
 	void appendKey(const BTreeKey& key, const Attribute& attr);
 
-	//void deleteKey(const BTreeKey& key, const Attribute& attr);
-
 	bool containsKey(const BTreeKey& key, const Attribute& attr);
 
 	bool isFull(const BTreeKey& key, const Attribute& attr);
@@ -285,13 +278,13 @@ public:
 		this->siblingPage = pageNum;
 	}
 
-	void redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor,
+	int redistribute(const Attribute& attr, BTreePage *neighbor, bool isLeftNeighbor,
 			BTreeKey &newKey);
 
-	void merge(const Attribute& attr, LeafPage *neighbor, bool isLeftNeighbor);
+	int merge(const Attribute& attr, LeafPage *neighbor, bool isLeftNeighbor);
 
-    // Just erase from the vector w/o deleting the key.value
-    void eraseKey(int num, const BTreeKey &key, const Attribute &attr);
+	// Just erase from the vector w/o deleting the key.value
+	void eraseKey(int num, const BTreeKey &key, const Attribute &attr);
 };
 
 class IndexManager
@@ -353,7 +346,8 @@ private:
 			const BTreeKey& key, bool& splitted, BTreeKey & newKey, PageNum & newPage);
 
 	LeafPage* findKey(IXFileHandle& ixfilehandle, const void * key, bool inclusive,
-			const Attribute& attribute, PageNum& pageNum, unsigned& keyNum, bool& found, BTreeKey & treeKey);
+			const Attribute& attribute, PageNum& pageNum, unsigned& keyNum, bool& found,
+			BTreeKey & treeKey);
 
 	void printBTreePage(IXFileHandle &ixfileHandle, BTreePage* page, const Attribute &attribute,
 			int height) const;
@@ -361,7 +355,7 @@ private:
 	void padding(int height) const;
 
 	void updateIterator(IXFileHandle& ixfileHandle, PageNum pageNum, unsigned keyNum,
-			const Attribute& attr);
+			int rightOffset, const Attribute& attr);
 
 	BTreePage * getRootPage(IXFileHandle & ixfileHandle, const Attribute& attribute);
 
