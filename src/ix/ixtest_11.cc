@@ -38,7 +38,7 @@ int testCase_11(const string &indexFileName, const Attribute &attribute){
     // insert entries
     for(unsigned i = 0; i <= numOfTuples; i++)
     {
-        key = i; 
+        key = i;
         rid.pageNum = key + 1;
         rid.slotNum = key + 2;
 
@@ -84,7 +84,7 @@ int testCase_11(const string &indexFileName, const Attribute &attribute){
     unsigned deletedRecordNum = 0;
     for(unsigned i = 5; i <= numOfTuples; i += 10)
     {
-        key = i; 
+        key = i;
         rid.pageNum = key + 1;
         rid.slotNum = key + 2;
 
@@ -137,7 +137,7 @@ int testCase_11(const string &indexFileName, const Attribute &attribute){
     cerr << endl;
     for(unsigned i = 5; i <= numOfTuples; i += 10)
     {
-        key = i; 
+        key = i;
         rid.pageNum = key + 1;
         rid.slotNum = key + 2;
 
@@ -177,7 +177,7 @@ int testCase_11(const string &indexFileName, const Attribute &attribute){
     }
 
     // Inconsistency?
-    if ((inRecordNum - deletedRecordNum + reInsertedRecordNum) != outRecordNum || inRecordNum == 0 
+    if ((inRecordNum - deletedRecordNum + reInsertedRecordNum) != outRecordNum || inRecordNum == 0
          || reInsertedRecordNum == 0 || outRecordNum == 0)
     {
         cerr << "Wrong entries output... The test failed." << endl;

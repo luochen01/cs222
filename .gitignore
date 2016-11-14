@@ -13,6 +13,7 @@ src/rm/*
 
 ixtest_p*
 makefile_new
+autotest.sh
 
 # Compiled Object files
 *.slo
