@@ -454,14 +454,17 @@ PageNum InternalPage::findSubtree(const BTreeKey & key, const Attribute& attr)
 
 void InternalPage::updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr)
 {
+    ushort oldKeySize = oldKey.keySize(attr);
+    ushort newKeySize = newKey.keySize(attr);
 	for (int i = 1; i <= numEntries; i++)
 	{
 		int comp = keys[i].compare(oldKey, attr);
 		if (comp == 0)
 		{
 //update the new key here
-			keys[i] = newKey;
-			spaceUsed = spaceUsed - oldKey.keySize(attr) + newKey.keySize(attr);
+			//keys[i] = newKey;
+            keys[i].copyFrom(attr, newKey);
+			spaceUsed = spaceUsed - oldKeySize + newKeySize;
 		}
 	}
 }
@@ -954,7 +957,7 @@ int LeafPage::merge(const Attribute& attr, LeafPage *neighborPage, bool isLeftNe
 		int numRightKeys = neighborPage->getNumEntries();
 		for (int i = 1; i <= numRightKeys; i++)
 		{
-			BTreeKey tmpKey = neighborPage->getKey(i);   // Always get from beginning
+			BTreeKey tmpKey = neighborPage->getKey(i);
 			this->insertKey(tmpKey, attr);
 			BTreeKey tmpLast = this->getKey(this->getNumEntries());
 			assert(0 == tmpLast.compare(tmpKey, attr));
@@ -1274,6 +1277,7 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 		if (oldEntryNull)
 		{
 			//no recursive delete, we can return now
+            // FIXME: Double free happens here
 			writePage(ixfileHandle, currentPage, attr);
 			delete currentPage;
 			return 0;
@@ -1313,7 +1317,17 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 
 				InternalPage* leftPage = (isLeftNeighbor) ? neighborPage : currentPage;
 				InternalPage* rightPage = (isLeftNeighbor) ? currentPage : neighborPage;
-				BTreeKey midKey = (isLeftNeighbor) ? currentKey : neighborKey;
+
+                BTreeKey midKey;
+                if (isLeftNeighbor)
+                {
+				    midKey.copyFrom(attr, currentKey);
+                }
+                else
+                {
+				    midKey.copyFrom(attr, neighborKey);
+				    //BTreeKey midKey = (isLeftNeighbor) ? currentKey : neighborKey;
+                }
 
 				if (neighborPage->isHalfFull())
 				{
@@ -1401,7 +1415,7 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 
 				// replace key value in parent entry by newKey
 				parentPage->updateKey(oldKey, newKey, attr);
-				parentPage->deleteEntry(oldKey, attr);
+				//parentPage->deleteEntry(oldKey, attr);
 
 				oldEntryNull = true;
 
