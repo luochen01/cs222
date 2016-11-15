@@ -1063,6 +1063,41 @@ void IndexManager::updateIterator(IXFileHandle& ixfileHandle, PageNum pageNum, u
 	}
 }
 
+void IndexManager::deleteIteratorKey(IXFileHandle& ixfileHandle, PageNum pageNum, unsigned keyNum,
+        const BTreeKey& key, const Attribute& attr)
+{
+	for (int i = 0; i < iterators.size(); i++)
+	{
+		IX_ScanIterator * it = iterators[i];
+        // We cannot delete key from other ixfileHandles
+        // since each one corresponding to a separate index file
+        // Same for updateIteratorPage
+		if (it->pageNum == pageNum && it->pFileHandle == &ixfileHandle)
+		{
+            it->leafPage->deleteKey(key, attr);
+            if (it->keyNum >= keyNum)
+            {
+                it->keyNum--;
+            }
+        }
+    }
+}
+
+void IndexManager::updateIteratorPage(IXFileHandle& ixfileHandle, PageNum pageNum, int newKeyCount,
+        const Attribute& attr)
+{
+	for (int i = 0; i < iterators.size(); i++)
+	{
+		IX_ScanIterator * it = iterators[i];
+		if (it->pageNum == pageNum && it->pFileHandle == &ixfileHandle)
+		{
+			it->keyNum = it->keyNum + newKeyCount;
+			delete it->leafPage;
+			it->leafPage = (LeafPage *) readPage(ixfileHandle, pageNum, attr);
+		}
+	}
+}
+
 RC IndexManager::createFile(const string &fileName)
 {
 	PagedFileManager * pfm = PagedFileManager::instance();
@@ -1378,6 +1413,10 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 
 		LeafPage* currentPage = (LeafPage *) current;
 		int index = currentPage->deleteKey(key, attr);
+
+        // update iterator keys
+        deleteIteratorKey(ixfileHandle, currentPage->pageNum, index, key, attr);
+
 		if (index < 0)
 		{
 			delete currentPage;
@@ -1430,11 +1469,13 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 
 				if (isLeftNeighbor)
 				{
-					updateIterator(ixfileHandle, currentPage->pageNum, index, count, attr);
+					updateIteratorPage(ixfileHandle, currentPage->pageNum, count, attr);
+					//updateIterator(ixfileHandle, currentPage->pageNum, index, count, attr);
 				}
 				else
 				{
-					updateIterator(ixfileHandle, currentPage->pageNum, index, 0, attr);
+					updateIteratorPage(ixfileHandle, currentPage->pageNum, 0, attr);
+					//updateIterator(ixfileHandle, currentPage->pageNum, index, 0, attr);
 				}
 
 				return 0;
@@ -1461,11 +1502,13 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 
 					if (isLeftNeighbor)
 					{
-						updateIterator(ixfileHandle, currentPage->pageNum, index, count, attr);
+					    updateIteratorPage(ixfileHandle, currentPage->pageNum, count, attr);
+						//updateIterator(ixfileHandle, currentPage->pageNum, index, count, attr);
 					}
 					else
 					{
-						updateIterator(ixfileHandle, currentPage->pageNum, index, 0, attr);
+					    updateIteratorPage(ixfileHandle, currentPage->pageNum, 0, attr);
+						//updateIterator(ixfileHandle, currentPage->pageNum, index, 0, attr);
 					}
 
 					return 0;
@@ -1489,11 +1532,13 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 				//writePage(ixfileHandle, neighborPage, attr);
 				if (isLeftNeighbor)
 				{
-					updateIterator(ixfileHandle, currentPage->pageNum, index, count, attr);
+					updateIteratorPage(ixfileHandle, currentPage->pageNum, count, attr);
+					//updateIterator(ixfileHandle, currentPage->pageNum, index, count, attr);
 				}
 				else
 				{
-					updateIterator(ixfileHandle, currentPage->pageNum, index, 0, attr);
+					updateIteratorPage(ixfileHandle, currentPage->pageNum, 0, attr);
+					//updateIterator(ixfileHandle, currentPage->pageNum, index, 0, attr);
 				}
 				delete currentPage;
 				delete neighborPage;

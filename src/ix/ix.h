@@ -357,6 +357,12 @@ private:
 	void updateIterator(IXFileHandle& ixfileHandle, PageNum pageNum, unsigned keyNum,
 			int rightOffset, const Attribute& attr);
 
+    void deleteIteratorKey(IXFileHandle& ixfileHandle, PageNum pageNum, unsigned keyNum,
+            const BTreeKey& key, const Attribute& attr);
+
+    void updateIteratorPage(IXFileHandle& ixfileHandle, PageNum pageNum, int newKeyCount,
+            const Attribute& attr);
+
 	BTreePage * getRootPage(IXFileHandle & ixfileHandle, const Attribute& attribute);
 
 };
