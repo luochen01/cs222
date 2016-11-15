@@ -188,7 +188,7 @@ void BTreeKey::print(const Attribute& attr) const
 		break;
 	case TypeVarChar:
 		readString(value, svalue, 0);
-		cout << svalue[0];
+		cout << svalue;
 		break;
 	}
 
@@ -312,7 +312,6 @@ void InternalPage::flush(const Attribute& attr)
 	for (int i = 1; i <= numEntries; i++)
 	{
 		offset += writeEntry(keys[i], pageNums[i], offset, attr);
-		keys[i].free();
 	}
 }
 
@@ -454,8 +453,8 @@ PageNum InternalPage::findSubtree(const BTreeKey & key, const Attribute& attr)
 
 void InternalPage::updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, const Attribute& attr)
 {
-    ushort oldKeySize = oldKey.keySize(attr);
-    ushort newKeySize = newKey.keySize(attr);
+	ushort oldKeySize = oldKey.keySize(attr);
+	ushort newKeySize = newKey.keySize(attr);
 	for (int i = 1; i <= numEntries; i++)
 	{
 		int comp = keys[i].compare(oldKey, attr);
@@ -463,7 +462,7 @@ void InternalPage::updateKey(const BTreeKey& oldKey, const BTreeKey& newKey, con
 		{
 //update the new key here
 			//keys[i] = newKey;
-            keys[i].copyFrom(attr, newKey);
+			keys[i].copyFrom(attr, newKey);
 			spaceUsed = spaceUsed - oldKeySize + newKeySize;
 		}
 	}
@@ -733,7 +732,6 @@ void LeafPage::flush(const Attribute& attr)
 	for (int i = 1; i <= numEntries; i++)
 	{
 		offset += writeKey(keys[i], offset, attr);
-		keys[i].free();
 	}
 
 }
@@ -1064,27 +1062,27 @@ void IndexManager::updateIterator(IXFileHandle& ixfileHandle, PageNum pageNum, u
 }
 
 void IndexManager::deleteIteratorKey(IXFileHandle& ixfileHandle, PageNum pageNum, unsigned keyNum,
-        const BTreeKey& key, const Attribute& attr)
+		const BTreeKey& key, const Attribute& attr)
 {
 	for (int i = 0; i < iterators.size(); i++)
 	{
 		IX_ScanIterator * it = iterators[i];
-        // We cannot delete key from other ixfileHandles
-        // since each one corresponding to a separate index file
-        // Same for updateIteratorPage
+		// We cannot delete key from other ixfileHandles
+		// since each one corresponding to a separate index file
+		// Same for updateIteratorPage
 		if (it->pageNum == pageNum && it->pFileHandle == &ixfileHandle)
 		{
-            it->leafPage->deleteKey(key, attr);
-            if (it->keyNum >= keyNum)
-            {
-                it->keyNum--;
-            }
-        }
-    }
+			it->leafPage->deleteKey(key, attr);
+			if (it->keyNum >= keyNum)
+			{
+				it->keyNum--;
+			}
+		}
+	}
 }
 
 void IndexManager::updateIteratorPage(IXFileHandle& ixfileHandle, PageNum pageNum, int newKeyCount,
-        const Attribute& attr)
+		const Attribute& attr)
 {
 	for (int i = 0; i < iterators.size(); i++)
 	{
@@ -1286,6 +1284,8 @@ RC IndexManager::doInsert(IXFileHandle & ixfileHandle, BTreePage * page, const A
 		}
 		else
 		{
+			internalPage->flush(attribute);
+			delete internalPage;
 			splitted = false;
 			return 0;
 		}
@@ -1312,7 +1312,7 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 		if (oldEntryNull)
 		{
 			//no recursive delete, we can return now
-            // FIXME: Double free happens here
+			// FIXME: Double free happens here
 			writePage(ixfileHandle, currentPage, attr);
 			delete currentPage;
 			return 0;
@@ -1353,16 +1353,16 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 				InternalPage* leftPage = (isLeftNeighbor) ? neighborPage : currentPage;
 				InternalPage* rightPage = (isLeftNeighbor) ? currentPage : neighborPage;
 
-                BTreeKey midKey;
-                if (isLeftNeighbor)
-                {
-				    midKey.copyFrom(attr, currentKey);
-                }
-                else
-                {
-				    midKey.copyFrom(attr, neighborKey);
-				    //BTreeKey midKey = (isLeftNeighbor) ? currentKey : neighborKey;
-                }
+				BTreeKey midKey;
+				if (isLeftNeighbor)
+				{
+					midKey.copyFrom(attr, currentKey);
+				}
+				else
+				{
+					midKey.copyFrom(attr, neighborKey);
+					//BTreeKey midKey = (isLeftNeighbor) ? currentKey : neighborKey;
+				}
 
 				if (neighborPage->isHalfFull())
 				{
@@ -1414,8 +1414,8 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 		LeafPage* currentPage = (LeafPage *) current;
 		int index = currentPage->deleteKey(key, attr);
 
-        // update iterator keys
-        deleteIteratorKey(ixfileHandle, currentPage->pageNum, index, key, attr);
+		// update iterator keys
+		deleteIteratorKey(ixfileHandle, currentPage->pageNum, index, key, attr);
 
 		if (index < 0)
 		{
@@ -1502,12 +1502,12 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 
 					if (isLeftNeighbor)
 					{
-					    updateIteratorPage(ixfileHandle, currentPage->pageNum, count, attr);
+						updateIteratorPage(ixfileHandle, currentPage->pageNum, count, attr);
 						//updateIterator(ixfileHandle, currentPage->pageNum, index, count, attr);
 					}
 					else
 					{
-					    updateIteratorPage(ixfileHandle, currentPage->pageNum, 0, attr);
+						updateIteratorPage(ixfileHandle, currentPage->pageNum, 0, attr);
 						//updateIterator(ixfileHandle, currentPage->pageNum, index, 0, attr);
 					}
 

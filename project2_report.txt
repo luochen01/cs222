@@ -1,37 +1,98 @@
 1. Basic information
-Team number (e.g., 01) : 
-#1 Student ID : 
-#1 Student Name : 
-#2 Student ID : 
-#2 Student Name : 
-OS (bit) :
-gcc version :
+Team number (e.g., 01) : 05
+#1 Student ID : 51288702
+#1 Student Name : Chen Luo
+#2 Student ID : 33728881
+#2 Student Name : Junjie Shen
+OS (bit) :64, Ubuntu 16.04.02
+gcc version : 5.4.0
 
 
 2. Meta-data
 - Show your meta-data design (Tables and Columns table) and information about each column.
+Tables Table contains the following columns:
+table-id: int type with 4 bytes, and stores the id of the table.
+table-name: varchar type with maximum 50 bytes, and stores the table name.
+file-name: varchar type with maximum 50 bytes, and stores the name of the file where the table tuples are stored.
 
+Columns Table contains the following columns:
+table-id: int type with 4 bytes, and stores the id of the table which the column belongs to.
+column-name: varchar type with maximum 50 bytes, and stores the column name.
+column-type: int type with 4 bytes, and stores the type of the column.
+column-length: int type with 4 bytes, and stores the length of the column.
+column-position: int type with 4 bytes, and stores the position of the column.
+column-version: int type with 4 bytes, and stores the table version which the column belongs to. This column is mainly used for add/drop attributes. 
+
+When the catalog is first initialized, these two tables are created. In the meanwhile, two records describing these two tables are inserted into table Tables, and 12 records describing the columns of these two tables are inserted into table Columns.
+
+For efficiency consideration, we also keep a copy of all meta-data into memory, which is handled class Category. When RelationManager is initialized, we load all meta data from the Tables and Columns tables into the Category object. When the user wants to create a table T, we not only insert records describing table T into the Tables and Columns tables, but also add this information into the Category object. The same principle applies when we want to delete a table T. Thus, when inserting/deleting/updating tuples, there is no need to read from the Tables and Columns again. Note this is critical for supporting add/drop attributes (which will be discussed later), since otherwise we will need one read operation of the Tables and Columns tables when reading each tuple.
 
 3. Internal Record Format
 - Show your record format design and describe how your design satisfies O(1) field access. If not, just mention that your team hasn't implemented this feature.
 - Describe how you store a VarChar field.
 - Describe how you deal with an update and delete.
 
+I used an offset-table based format to store each record. Specially, a record with N fields is stored as follows:
+
+version, offset1, offset2, ..., offsetN, field1, field2, ..., fieldN
+
+Variable version, which takes 4 bytes and indicates the table version when the record is inserted, is placed at the beginning of the record. Then follows an offset table containing N offsets (each takes 2 bytes) is placed at the beginning of the record, where the ith offset indicates the end offset of the ith field. Thus, the start offset of the ith field is simply the end address of the previous field, i.e., offset i-1. In particular, for the first field, its start offset is just the end offset of the offset table, i.e., offset0 = N * 2. A field is NULL iff its end offset equals to its start offset.
+
+To access the ith field, one first needs to access the i-1th and ith item in the offset table (note offset0 can be implicitly computed) to get the start and end offset of that field. Then, the ith field can be retrieved by accessing the record data between offset i-1 and offset i. Note if offset i-1 equals to offset i, which indicates the field is NULL, then the memory read operation can be simply skipped.
+
+Given a VarChar field with size N, I first store size N in 2 bytes, followed by the actual N bytes of the field.
+
+Since the delete and update operation mainly involves modifying the page, the details of these two operations are described in Section 4.
 
 4. Page Format
 - Show your page format design.
 - Describe how you deal with an update and delete.
 
+recordStartOffset, slotSize, slot1, slot2, ..., slot n,  ..., free space, ..., record n, ..., record1
+
+The first two variables, each takes 2 bytes, store metadata about this page. Variable recordStartOffset stores the offset where the record space starts, and variable slotSize stores the size of the record slot table. After these two variables comes the record slot table. Each record slot contains two variables, which are offset and size, and each takes 2 bytes. Offset stores the start offset of the corresponding record, while size stores the size of that record. The records are stored at the end of the page, and grow in the reverse direction. The free space is between the record table and the record space, and it is used up when the end of the slot table meets the start of the record space.
+
+To update a record, say record i in page p, we also first read the p-th page into memory. Now let us first consider the simple case where record i resides in page p, i.e., page p is not an overflow page. The new size of the record i is then calculated based on the passed data. If page p has enough free space to hold the new record i, the space of record i is enlarged by moving record n, ..., record i+1 towards the beginning of the page, and the actual data is written into this space. 
+Furthermore, if slot i has an overflow marker (size == 0), we then need to delete record i from the overflow page. After that, each record slot is checked and updated to point to the new record offset as well as variable recordStartOffset. Finally, the page is written into the disk to conclude the update operation.
+
+Otherwise, there is no enough space to hold the new record within page p, we have to find a new page, say q, to insert the new record i there. In the meanwhile, a special overflow marker is placed at page p. Specifically, the space of record i is shrunk to 8 bytes, which contain two int variables newPageNum and newSlotNum, to indicate the actual location of the record. Then, a special overflow marker is placed on slot i (size = 0) to indicate the corresponding record is in another page, and all other slots as well as recordStartOffset are checked and updated to the new record offset if necessary. Finally, page p is written into the disk to conclude the update operation.
+
+Now consider another case where record i is not stored in page p, but in another overflow page q. If page q has enough space to hold the new record i, we simply increase the space of record i and place the new record there as before. Otherwise, if page q does not have enough space, we need to delete record i from page q, and find another page, say w, to insert record i there. After that, we also need to update the overflow marker at page p to set variable newPageNum as w. As a special case, if the new page w is chosen as page p, there is then no need to use the overflow marker, and we can simply place record i there.
+
+To delete a record, say record i in page p, we first read the p-th page into memory, and then check the i-th slot. If slot i does not have an overflow marker (size !=0), then we can simply delete record i within this page. Specifically, the space of record i is erased and shrunk by moving record n, ..., record i+1 towards the end of the page. Then, a special delete marker is set on slot i (offset = 0) to indicate the corresponding record is deleted, and all other slots as well as recordStartOffset are checked and updated to the new record offset if necessary. Finally, page p is written into the disk to conclude the delete operation.
+
+Otherwise, if slot i has an overflow marker (size == 0), we then have to fetch the overflow page, say q, and delete the record from page q first. After that, we also delete the 8 bytes of record i, which is handled similarly as before. 
+
 
 5. File Format
 - Show your file format design
 
+The organization of all pages in a file is as follows:
+
+numPages, page1, ..., pageN
+
+The file header only contains a variable numPages, which takes 4 bytes and stores the number of pages in the file. The pages are then stored after the file header. To locate the ith page, one can simply calculate its start address as 4 + PAGE_SIZE * i, where PAGE_SIZE is 4096. 
 
 
 6. Implementation Detail
 - Other implementation details goes here.
+To store meta data in memory, we created several classes in correspondence to this. These classes are briefly discussed as follows.
+ColumnRecord: stores information about table columns, and each object corresponds to one tuple in the Columns table.
+TableRecord: stores information about tables, and each object corresponds to one tuple in the Tables table. Each TableRecord object contains several ColumnRecord objects, but they are organized into several TableVersions.
+TableVersion: contains a list of columns for a table at a given version. A table may have multiple versions.
+Catalog: stores all meta data in memory, and the main entrance is a list of TableRecords.
 
 
 7. Other (optional)
 - Freely use this section to tell us about things that are related to the project 2, but not related to the other sections (optional)
+
+He we mainly discuss how to support add/drop attributes, and how read/delete/update tuples are adjusted accordingly.
+
+The main change is that each table now has a set of versions, while version contains a set of columns. Each tuple of a table is then associated with a table version, and the table version is stored at the beginning of the tuple.
+
+Each time the definition of a table is altered, we create a new table version by duplicating the columns of the most recent version. Then, the attribute is added into/dropped from the newly created version. In the meanwhile, the tuples of the record are stay untouched.
+
+For the read operation, we first read the first 4 bytes of the tuple to get the version number, and then check the Catalog object to get the set of attributes (at that version) corresponding to this tuple. After that, a diff operation is performed between the version which the tuple corresponds to, say version1, and the most recent version of the table, say version 2. For any attribute in version 2, if the attribute appears in version1, then its value is copied from the tuple; otherwise, the attribute value is simply set as NULL.
+
+The delete operation is unchanged. While for the update operation, a slight change is that the version number of the updated tuple is also updated as the most recent version number of the table.
 

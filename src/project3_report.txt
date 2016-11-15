@@ -1,37 +1,55 @@
 1. Basic information
-Team number (e.g., 01) : 
-#1 Student ID : 
-#1 Student Name : 
-#2 Student ID : 
-#2 Student Name : 
-OS (bit) :
-gcc version :
+Team number (e.g., 01) : 05
+#1 Student ID : 51288702
+#1 Student Name : Chen Luo
+#2 Student ID : 33728881
+#2 Student Name : Junjie Shen
+OS (bit) :64, Ubuntu 16.04.02
+gcc version : 5.4.0
 
 
 2. Meta-data page in an index file
 - Show your meta-data page of an index design if you have any. 
-
+Here we use a very simple meta-data page, whose page num is always 0. This meta-data page simply stores the page num of the root node of the index, which allows us to locate the root. 
 
 3. Index Entry Format
 - Show your index entry design (structure). 
+To handle arbitrary number of duplicate keys, we use the attribute value (i.e., search key) plus the RID as the composite key. Thus, each index entry contains an attribute value, which serves as the search key, plus the RID, which stores the location of the record. Our internal pages also use composite keys, plus the page nums of the children nodes.
 
 
 4. Page Format
 - Show your internal-page (non-leaf node) design.
 
+The page format of the internal-page is as follows:
+
+bool isLeaf, unsigned short numEntry, unsigned short spaceUsed, pageNum0, key1, pageNum1, key2, pageNum2, ..., key n, pageNum n
+
+The page header contains three variables. The first bool variable isLeaf (which is false) indiciates this page is an internal-page. The second variable numEntry stores the number of entries in the this page. The third variable spaceUsed indicates the number of bytes used, which is also the start offset of the free space. Then it follows the N+1 page nums and keys (attribute value + RID).
+
 - Show your leaf-page (leaf node) design.
 
+The page format of the leaf page is as follows:
+bool isLeaf, unsigned short numEntry, unsigned short spaceUsed, unsigned siblingPage, key1, key2,..., key n
+
+The page format of the leaf page is similar to that of internal page. Now the isLeaf variable is true, and the page header contains another variable siblingPage, which stores the page num of the sibling page. Then it follows n composite search keys, each of which contains an attribue value and the corresponding RID.
 
 5. Implementation Detail
-- Have you added your own source file (.cc or .h)?
+- Have you added your own source file (.cc or .h)? No.
 
-- Have you implemented non-lazy deletion? Choose Yes or No: 
+- Have you implemented non-lazy deletion? Choose Yes or No:  Yes
 
-- Have you implemented duplicated key handling that can span multiple pages? Choose Yes or No: 
+- Have you implemented duplicated key handling that can span multiple pages? Choose Yes or No: Yes.
   If yes, please explain briefly how you have implemented this feature.
+As mentioned in Section 3, we use composite keys to handle duplicated keys spanning multiple pages. Each composite key contains an attribute value plus a RID. Since the combination of these two values must be unique, then there would be no duplicate composite keys at all in our index. However, a tricky case is to search the index given only an attribute value without RID. To handle this, here we create a wrapper composite key based on the given attribute value with a RID whose pageNum = 0 and slotNum = 0 (i.e., the smallest RID possible) so that the search operation can be handled as normal keys.
 
 - Other implementation details:
 
+The main classes of our project 3 are as follows.
+
+BTreeKey: stores the composite key, which contains an attribute value and a RID.
+BTreePage: the base class of BTree pages. Provides interfaces for manipulating a BTree page.
+InternalPage: inherits from BTreePage, and provides interfaces for manipulating a BTree internal page.
+LeafPage: inherits from BTreePage, and provides interfaces for manipulating a BTree leaf page. 
 
 6. Other (optional)
 - Freely use this section to tell us about things that are related to the project 3, but not related to the other sections (optional)
