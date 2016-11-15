@@ -1365,7 +1365,7 @@ RC IndexManager::doDelete(IXFileHandle &ixfileHandle, const Attribute &attr, BTr
 						//TODO: this is a merge case. if a page is deleted, no need to write it back, right?
 						writePage(ixfileHandle, leftPage, attr);
 						delete currentPage;
-						delete parentPage;
+						delete neighborPage;
 						return 0;
 					}
 

@@ -13,6 +13,7 @@ src/rm/*
 
 ixtest_p*
 makefile_new
+makefile_old
 autotest.sh
 
 # Compiled Object files
