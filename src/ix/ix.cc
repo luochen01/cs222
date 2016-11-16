@@ -640,6 +640,8 @@ void InternalPage::mergeInternals(const Attribute& attr, BTreeKey &key, Internal
 		PageNum iterPN = rightPage->getPageNum(i);
 		leftPage->appendEntry(iterK, iterPN, attr);
 	}
+
+	rightPage->reset();
 }
 
 void InternalPage::mergeToRoot(const Attribute& attr, BTreeKey &key, InternalPage *leftPage,
