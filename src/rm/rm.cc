@@ -1,6 +1,8 @@
 #include "rm.h"
 #include <iostream>
 
+#include <math.h>
+
 using namespace std;
 
 RelationManager* RelationManager::_rm = 0;
@@ -19,6 +21,7 @@ RelationManager::RelationManager()
 	tupleBuffer = new byte[PAGE_SIZE];
 	catalog = Catalog::instance();
 	rbfm = RecordBasedFileManager::instance();
+	im = IndexManager::instance();
 	loadCatalog();
 }
 
@@ -211,6 +214,29 @@ RC RelationManager::doInsertTuple(const string &tableName, const void *data, RID
 	}
 	int result = rbfm->insertRecord(fileHandle, attrs, data, rid);
 	rbfm->closeFile(fileHandle);
+
+	vector<ColumnRecord*> columns = catalog->getTableColumns(tableName);
+
+	unsigned offset = ceil((double) columns.size() / 8);
+
+	for (int i = 0; i < columns.size(); i++)
+	{
+		ColumnRecord* column = columns[i];
+		Attribute attr = attrs[i];
+		if (column->hasIndex)
+		{
+			string indexName = getIndexName(tableName, column->columnName);
+			if (insertIndexEntry(indexName, (byte*) data + offset, rid, attr) != 0)
+			{
+				result = -1;
+			}
+		}
+		if (!isAttrNull(data, i))
+		{
+			offset += attributeSize(attr, (byte*) data + offset);
+		}
+	}
+
 	return result;
 }
 
@@ -225,11 +251,18 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 
 RC RelationManager::doDeleteTuple(const string &tableName, const RID& rid)
 {
+	// we need to read the original data
+	if (readTuple(tableName, rid, tupleBuffer) != 0)
+	{
+		return -1;
+	}
+
 	vector<Attribute> attrs;
 	if (getAttributes(tableName, attrs) != 0)
 	{
 		return -1;
 	}
+
 	FileHandle fileHandle;
 	if (rbfm->openFile(tableName, fileHandle) != 0)
 	{
@@ -238,6 +271,29 @@ RC RelationManager::doDeleteTuple(const string &tableName, const RID& rid)
 
 	int result = rbfm->deleteRecord(fileHandle, attrs, rid);
 	rbfm->closeFile(fileHandle);
+
+	vector<ColumnRecord*> columns = catalog->getTableColumns(tableName);
+
+	unsigned offset = ceil((double) columns.size() / 8);
+
+	for (int i = 0; i < columns.size(); i++)
+	{
+		ColumnRecord* column = columns[i];
+		Attribute attr = attrs[i];
+		if (column->hasIndex)
+		{
+			string indexName = getIndexName(tableName, column->columnName);
+			if (deleteIndexEntry(indexName, (byte*) tupleBuffer + offset, rid, attr) != 0)
+			{
+				result = -1;
+			}
+		}
+		if (!isAttrNull(tupleBuffer, i))
+		{
+			offset += attributeSize(attr, (byte*) tupleBuffer + offset);
+		}
+	}
+
 	return result;
 }
 
@@ -252,6 +308,11 @@ RC RelationManager::updateTuple(const string &tableName, const void *data, const
 
 RC RelationManager::doUpdateTuple(const string &tableName, const void * data, const RID& rid)
 {
+	if (readTuple(tableName, rid, tupleBuffer) != 0)
+	{
+		return -1;
+	}
+
 	vector<Attribute> attrs;
 	if (getAttributes(tableName, attrs) != 0)
 	{
@@ -265,6 +326,35 @@ RC RelationManager::doUpdateTuple(const string &tableName, const void * data, co
 
 	int result = rbfm->updateRecord(fileHandle, attrs, data, rid);
 	rbfm->closeFile(fileHandle);
+
+	vector<ColumnRecord*> columns = catalog->getTableColumns(tableName);
+
+	unsigned oldOffset = ceil((double) columns.size() / 8);
+	unsigned newOffset = oldOffset;
+
+	for (int i = 0; i < columns.size(); i++)
+	{
+		ColumnRecord* column = columns[i];
+		Attribute attr = column->toAttribute();
+		if (column->hasIndex)
+		{
+			string indexName = getIndexName(tableName, column->columnName);
+			if (updateIndexEntry(indexName, (byte*) tupleBuffer + oldOffset,
+					(byte*) data + newOffset, rid, attr) != 0)
+			{
+				result = -1;
+			}
+		}
+		if (!isAttrNull(tupleBuffer, i))
+		{
+			oldOffset += attributeSize(attr, (byte*) tupleBuffer + oldOffset);
+		}
+		if (!isAttrNull(data, i))
+		{
+			newOffset += attributeSize(attr, (byte*) tupleBuffer + newOffset);
+		}
+	}
+
 	return result;
 }
 
@@ -411,7 +501,7 @@ RC RelationManager::addAttribute(const string &tableName, const Attribute &attr)
 	table->createNewVersion();
 	table->addColumn(new ColumnRecord(attr, table->getColumnsNum()));
 
-	//write columns into Columns table
+//write columns into Columns table
 	writeToColumnsTable(table->currentVersion->columns);
 
 	return 0;
@@ -426,5 +516,192 @@ void RelationManager::writeToColumnsTable(const vector<ColumnRecord*>& columns)
 		doInsertTuple(COLUMNS_TABLE, tupleBuffer, rid);
 		column->rid = rid;
 	}
+}
+
+string RelationManager::getIndexName(const string &tableName, const string & attributeName)
+{
+	return tableName + "." + attributeName + ".idx";
+}
+
+RC RelationManager::getAttribute(const string& tableName, const string& attributeName,
+		Attribute& attr)
+{
+	ColumnRecord* columnRecord = catalog->getColumnByName(tableName, attributeName);
+	if (columnRecord == NULL)
+	{
+		return -1;
+	}
+	else
+	{
+		attr = columnRecord->toAttribute();
+		return 0;
+	}
+}
+
+RC RelationManager::createIndex(const string &tableName, const string &attributeName)
+{
+	ColumnRecord * column = catalog->getColumnByName(tableName, attributeName);
+	if (column == NULL)
+	{
+		return -1;
+	}
+	Attribute attr = column->toAttribute();
+	if (column->hasIndex)
+	{
+		return -1;
+	}
+//create file here
+	string indexName = getIndexName(tableName, attributeName);
+
+	if (im->createFile(indexName) != 0)
+	{
+		return -1;
+	}
+
+	IXFileHandle fileHandle;
+	if (im->openFile(indexName, fileHandle) != 0)
+	{
+		im->destroyFile(indexName);
+		return -1;
+	}
+
+	RM_ScanIterator it;
+	vector<string> attrNames;
+	attrNames.push_back(attributeName);
+	if (scan(tableName, "", NO_OP, NULL, attrNames, it) != 0)
+	{
+		im->destroyFile(indexName);
+		return -1;
+	}
+	RID rid;
+	int result = 0;
+	while (it.getNextTuple(rid, tupleBuffer) != EOF)
+	{
+		if (im->insertEntry(fileHandle, attr, tupleBuffer, rid) != 0)
+		{
+			im->closeFile(fileHandle);
+			im->destroyFile(indexName);
+			return -1;
+		}
+	}
+	it.close();
+	if (im->closeFile(fileHandle) != 0)
+	{
+		im->destroyFile(indexName);
+		return -1;
+	}
+
+	column->hasIndex = true;
+
+	column->writeTo(tupleBuffer);
+	return doUpdateTuple(COLUMNS_TABLE, tupleBuffer, column->rid);
+}
+
+RC RelationManager::destroyIndex(const string &tableName, const string &attributeName)
+{
+
+	ColumnRecord * column = catalog->getColumnByName(tableName, attributeName);
+
+	if (!column->hasIndex)
+	{
+		return -1;
+	}
+	Attribute attr = column->toAttribute();
+
+//delete file here
+	string indexName = getIndexName(tableName, attributeName);
+	if (im->destroyFile(indexName) != 0)
+	{
+		return -1;
+	}
+
+	column->hasIndex = false;
+
+	column->writeTo(tupleBuffer);
+	return doUpdateTuple(COLUMNS_TABLE, tupleBuffer, column->rid);
+}
+
+RC RelationManager::insertIndexEntry(const string & indexName, const void * key, const RID& rid,
+		const Attribute& attr)
+{
+	IXFileHandle fileHandle;
+	if (im->openFile(indexName, fileHandle) != 0)
+	{
+		return -1;
+	}
+
+	if (im->insertEntry(fileHandle, attr, key, rid) != 0)
+	{
+		im->closeFile(fileHandle);
+		return -1;
+	}
+
+	return im->closeFile(fileHandle);
+}
+
+RC RelationManager::deleteIndexEntry(const string & indexName, const void * key, const RID& rid,
+		const Attribute& attr)
+{
+	IXFileHandle fileHandle;
+	if (im->openFile(indexName, fileHandle) != 0)
+	{
+		return -1;
+	}
+
+	if (im->deleteEntry(fileHandle, attr, key, rid) != 0)
+	{
+		im->closeFile(fileHandle);
+		return -1;
+	}
+
+	return im->closeFile(fileHandle);
+}
+
+RC RelationManager::updateIndexEntry(const string & indexName, const void * oldKey,
+		const void * newKey, const RID& rid, const Attribute& attr)
+{
+	IXFileHandle fileHandle;
+	if (im->openFile(indexName, fileHandle) != 0)
+	{
+		return -1;
+	}
+
+	if (im->deleteEntry(fileHandle, attr, oldKey, rid) != 0)
+	{
+		im->closeFile(fileHandle);
+		return -1;
+	}
+
+	if (im->insertEntry(fileHandle, attr, newKey, rid) != 0)
+	{
+		im->closeFile(fileHandle);
+		return -1;
+	}
+
+	return im->closeFile(fileHandle);
+}
+
+RC RelationManager::indexScan(const string &tableName, const string &attributeName,
+		const void *lowKey, const void *highKey, bool lowKeyInclusive, bool highKeyInclusive,
+		RM_IndexScanIterator &rm_IndexScanIterator)
+{
+	string indexName = getIndexName(tableName, attributeName);
+	Attribute attr;
+	if (getAttribute(tableName, attributeName, attr) != 0)
+	{
+		return -1;
+	}
+	if (rm_IndexScanIterator.init(indexName) != 0)
+	{
+		return -1;
+	}
+
+	if (im->scan(rm_IndexScanIterator.fileHandle, attr, lowKey, highKey, lowKeyInclusive,
+			highKeyInclusive, rm_IndexScanIterator.it) != 0)
+	{
+		rm_IndexScanIterator.close();
+		return -1;
+	}
+	return 0;
 }
 

@@ -1072,7 +1072,7 @@ void IndexManager::deleteIteratorKey(IXFileHandle& ixfileHandle, PageNum pageNum
 		// We cannot delete key from other ixfileHandles
 		// since each one corresponding to a separate index file
 		// Same for updateIteratorPage
-		if (it->pageNum == pageNum && it->pFileHandle == &ixfileHandle)
+		if (it->pageNum == pageNum && it->fileHandle == &ixfileHandle)
 		{
 			it->leafPage->deleteKey(key, attr);
 			if (it->keyNum >= keyNum)
@@ -1089,7 +1089,7 @@ void IndexManager::updateIteratorPage(IXFileHandle& ixfileHandle, PageNum pageNu
 	for (int i = 0; i < iterators.size(); i++)
 	{
 		IX_ScanIterator * it = iterators[i];
-		if (it->pageNum == pageNum && it->pFileHandle == &ixfileHandle)
+		if (it->pageNum == pageNum && it->fileHandle == &ixfileHandle)
 		{
 			it->keyNum = it->keyNum + newKeyCount;
 			delete it->leafPage;
@@ -1579,7 +1579,7 @@ RC IndexManager::scan(IXFileHandle &ixfileHandle, const Attribute &attribute, co
 	{
 		return -1;
 	}
-	ix_ScanIterator.pFileHandle = &ixfileHandle;
+	ix_ScanIterator.fileHandle = &ixfileHandle;
 	ix_ScanIterator.attribute = attribute;
 	ix_ScanIterator.lowKey = lowKey;
 	ix_ScanIterator.highKey = highKey;
@@ -1742,7 +1742,6 @@ void IndexManager::padding(int height) const
 
 IX_ScanIterator::IX_ScanIterator()
 {
-	pFileHandle = NULL;
 	pageNum = 0;
 	keyNum = 0;
 	leafPage = NULL;
@@ -1800,8 +1799,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key)
 			return -1;
 		}
 		delete leafPage;
-		leafPage = (LeafPage *) IndexManager::instance()->readPage(*pFileHandle, pageNum,
-				attribute);
+		leafPage = (LeafPage *) IndexManager::instance()->readPage(*fileHandle, pageNum, attribute);
 //start over
 		keyNum = 1;
 		getNextKeyWithinPage(treeKey);

@@ -36,6 +36,33 @@ int attributeIndex(const vector<Attribute>& recordDescriptor, const Attribute & 
 	return -1;
 }
 
+vector<Attribute> getAttributes(const vector<Attribute>& recordDescriptor,
+		const vector<string>& attributeNames)
+{
+	vector<Attribute> result;
+	for (string name : attributeNames)
+	{
+		int index = attributeIndex(recordDescriptor, name);
+		assert(index >= 0);
+		result.push_back(recordDescriptor[index]);
+	}
+	return result;
+}
+
+vector<int> getAttributeIndexes(const vector<Attribute>& recordDescriptor,
+		const vector<string>& attributeNames)
+{
+
+	vector<int> result;
+	for (string name : attributeNames)
+	{
+		int index = attributeIndex(recordDescriptor, name);
+		assert(index >= 0);
+		result.push_back(index);
+	}
+	return result;
+}
+
 int getTableVersion(FileHandle& fileHandle)
 {
 	Catalog * catalog = Catalog::instance();
@@ -462,8 +489,7 @@ RBFM_ScanIterator::RBFM_ScanIterator()
 	curPageNum = -1;
 	curSlotNum = -1;
 	end = false;
-
-	pFileHandle = NULL;
+	fileHandle = NULL;
 	compOp = EQ_OP;
 	conditionValue = NULL;
 	pRecordDescriptor = NULL;
@@ -471,7 +497,6 @@ RBFM_ScanIterator::RBFM_ScanIterator()
 }
 RBFM_ScanIterator::~RBFM_ScanIterator()
 {
-	pFileHandle = NULL;
 	conditionValue = NULL;
 	end = false;
 }
@@ -489,7 +514,7 @@ void RBFM_ScanIterator::init()
 void RBFM_ScanIterator::readNextPage()
 {
 
-	if (curPage.readPage(*pFileHandle, ++curPageNum) == 0)
+	if (curPage.readPage(*fileHandle, ++curPageNum) == 0)
 	{
 		curSlotNum = -1;
 	}
@@ -505,7 +530,7 @@ RC RBFM_ScanIterator::getNextRecord(Record& record)
 	{
 		return -1;
 	}
-	while (curPageNum < pFileHandle->pages && !end)
+	while (curPageNum < fileHandle->pages && !end)
 	{
 		if (getNextRecordWithinPage(record) == 0)
 		{
@@ -666,7 +691,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 	while (getNextRecord(record) == 0)
 	{
 		int version = record.getVersion();
-		vector<Attribute> oldRecordDescriptor = getRecordDescriptor(pFileHandle->getFileName(),
+		vector<Attribute> oldRecordDescriptor = getRecordDescriptor(fileHandle->getFileName(),
 				version, *pRecordDescriptor);
 		if (compOp != NO_OP)
 		{
@@ -1113,7 +1138,7 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle, const vector<Attribute> 
 	rbfm_ScanIterator.conditionAttribute = conditionAttribute;
 	rbfm_ScanIterator.conditionValue = value;
 
-	rbfm_ScanIterator.pFileHandle = &fileHandle;
+	rbfm_ScanIterator.fileHandle = &fileHandle;
 	rbfm_ScanIterator.pRecordDescriptor = &recordDescriptor;
 	rbfm_ScanIterator.attributeNames = attributeNames;
 

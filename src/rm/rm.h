@@ -9,6 +9,7 @@
 
 #include "catalog.h"
 #include "../rbf/rbfm.h"
+#include "../ix/ix.h"
 
 using namespace std;
 
@@ -40,6 +41,45 @@ private:
 	FileHandle fileHandle;
 }
 ;
+
+// RM_IndexScanIterator is an iterator to go through index entries
+class RM_IndexScanIterator
+{
+private:
+	IX_ScanIterator it;
+	IXFileHandle fileHandle;
+
+	friend class RelationManager;
+
+public:
+	RM_IndexScanIterator()
+	{
+	}
+	;  	// Constructor
+	~RM_IndexScanIterator()
+	{
+	}
+	; 	// Destructor
+
+	// "key" follows the same format as in IndexManager::insertEntry()
+	RC getNextEntry(RID &rid, void *key)
+	{
+		return it.getNextEntry(rid, key);
+	}
+	;  	// Get next matching entry
+	RC close()
+	{
+		it.close();
+		return IndexManager::instance()->closeFile(fileHandle);
+	}
+	;
+
+	RC init(const string& indexName)
+	{
+		return IndexManager::instance()->openFile(indexName, fileHandle);
+	}
+	// Terminate index scan
+};
 
 // Relation Manager
 class RelationManager
@@ -84,6 +124,15 @@ public:
 
 	RC dropAttribute(const string &tableName, const string &attributeName);
 
+	RC createIndex(const string &tableName, const string &attributeName);
+
+	RC destroyIndex(const string &tableName, const string &attributeName);
+
+	// indexScan returns an iterator to allow the caller to go through qualified entries in index
+	RC indexScan(const string &tableName, const string &attributeName, const void *lowKey,
+			const void *highKey, bool lowKeyInclusive, bool highKeyInclusive,
+			RM_IndexScanIterator &rm_IndexScanIterator);
+
 protected:
 	RelationManager();
 
@@ -94,17 +143,36 @@ private:
 
 	//Added fields
 	byte * tupleBuffer;
+
 	Catalog * catalog;
+
 	RecordBasedFileManager *rbfm;
+
+	IndexManager* im;
 
 	// Added methods
 	RC loadCatalog();
+
 	RC doInsertTuple(const string &tableName, const void *data, RID &rid);
+
 	RC doDeleteTuple(const string &tableName, const RID& rid);
+
 	RC doUpdateTuple(const string &tableName, const void * data, const RID& rid);
+
+	RC insertIndexEntry(const string & indexName, const void * key, const RID& rid,
+			const Attribute& attr);
+
+	RC deleteIndexEntry(const string & indexName, const void * key, const RID& rid,
+			const Attribute& attr);
+
+	RC updateIndexEntry(const string & indexName, const void * oldKey, const void * newKey,
+			const RID& rid, const Attribute& attr);
 
 	void writeToColumnsTable(const vector<ColumnRecord*>& columns);
 
+	string getIndexName(const string &tableName, const string & attributeName);
+
+	RC getAttribute(const string& tableName, const string& attributeName, Attribute& attr);
 };
 
 #endif

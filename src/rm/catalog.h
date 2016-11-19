@@ -46,9 +46,11 @@ public:
 	int columnLength;
 	int columnPosition;
 	int columnVersion;
+	int hasIndex;
 
 	ColumnRecord() :
-			tableId(0), columnType(TypeInt), columnLength(0), columnPosition(0), columnVersion(0)
+			tableId(0), columnType(TypeInt), columnLength(0), columnPosition(0), columnVersion(0), hasIndex(
+					0)
 	{
 	}
 	ColumnRecord(const ColumnRecord& right)
@@ -59,6 +61,7 @@ public:
 		this->columnLength = right.columnLength;
 		this->columnPosition = right.columnPosition;
 		this->columnVersion = right.columnVersion;
+		this->hasIndex = right.hasIndex;
 	}
 
 	ColumnRecord(Attribute attr, int position)
@@ -69,6 +72,7 @@ public:
 		this->columnLength = attr.length;
 		this->columnPosition = position;
 		this->columnVersion = 0;
+		this->hasIndex = 0;
 	}
 	~ColumnRecord()
 	{
@@ -83,6 +87,7 @@ public:
 		this->columnLength = columnLength;
 		this->columnPosition = columnPosition;
 		this->columnVersion = 0;
+		this->hasIndex = 0;
 	}
 
 	Attribute toAttribute()
@@ -104,6 +109,7 @@ public:
 		offset += write(data, columnLength, offset);
 		offset += write(data, columnPosition, offset);
 		offset += write(data, columnVersion, offset);
+		offset += write(data, hasIndex, offset);
 	}
 
 	void readFrom(void* data)
@@ -115,6 +121,7 @@ public:
 		offset += read(data, columnLength, offset);
 		offset += read(data, columnPosition, offset);
 		offset += read(data, columnVersion, offset);
+		offset += read(data, hasIndex, offset);
 	}
 };
 
@@ -361,6 +368,7 @@ public:
 		columnsTable->addColumn(new ColumnRecord("column-length", TypeInt, 4, 4));
 		columnsTable->addColumn(new ColumnRecord("column-position", TypeInt, 4, 5));
 		columnsTable->addColumn(new ColumnRecord("column-version", TypeInt, 4, 6));
+		columnsTable->addColumn(new ColumnRecord("hasIndex", TypeInt, 4, 7));
 		tables.push_back(tablesTable);
 		tables.push_back(columnsTable);
 		nextTableId = 3;
@@ -452,6 +460,33 @@ public:
 		}
 		return NULL;
 	}
+
+	ColumnRecord* getColumnByName(const string& tableName, const string& columnName)
+	{
+		TableRecord * t = getTableByName(tableName);
+		if (t == NULL)
+		{
+			return NULL;
+		}
+		else
+		{
+			return t->getColumnByName(columnName);
+		}
+	}
+
+	vector<ColumnRecord *> getTableColumns(const string& name)
+	{
+		TableRecord * t = getTableByName(name);
+		if (t == NULL)
+		{
+			return vector<ColumnRecord*>();
+		}
+		else
+		{
+			return t->currentVersion->columns;
+		}
+	}
+
 	unsigned getNextTableId()
 	{
 		return nextTableId++;

@@ -373,42 +373,6 @@ private:
 
 };
 
-class IX_ScanIterator
-{
-private:
-	friend class IndexManager;
-
-	IXFileHandle * pFileHandle;
-	PageNum pageNum;
-	unsigned keyNum;
-	LeafPage * leafPage;
-	Attribute attribute;
-	const void * lowKey;
-	const void * highKey;
-	bool lowKeyInclusive;
-	bool highKeyInclusive;
-
-	bool end;
-
-	RC getNextKeyWithinPage(BTreeKey& key);
-
-	bool checkEnd(const BTreeKey& key);
-
-public:
-
-	// Constructor
-	IX_ScanIterator();
-
-	// Destructor
-	~IX_ScanIterator();
-
-	// Get next matching entry
-	RC getNextEntry(RID &rid, void *key);
-
-	// Terminate index scan
-	RC close();
-};
-
 class IXFileHandle
 {
 private:
@@ -446,6 +410,43 @@ public:
 	void setRootPage(PageNum rootPage);
 
 	unsigned getNumberOfPages();                              // Get the number of pages in the file
+
+};
+
+class IX_ScanIterator
+{
+private:
+	friend class IndexManager;
+
+	IXFileHandle * fileHandle;
+	PageNum pageNum;
+	unsigned keyNum;
+	LeafPage * leafPage;
+	Attribute attribute;
+	const void * lowKey;
+	const void * highKey;
+	bool lowKeyInclusive;
+	bool highKeyInclusive;
+
+	bool end;
+
+	RC getNextKeyWithinPage(BTreeKey& key);
+
+	bool checkEnd(const BTreeKey& key);
+
+public:
+
+	// Constructor
+	IX_ScanIterator();
+
+	// Destructor
+	~IX_ScanIterator();
+
+	// Get next matching entry
+	RC getNextEntry(RID &rid, void *key);
+
+	// Terminate index scan
+	RC close();
 
 };
 

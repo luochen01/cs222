@@ -13,6 +13,14 @@ struct Attribute;
 
 int attributeIndex(const vector<Attribute>& recordDescriptor, const string& attributeName);
 
+int attributeIndex(const vector<Attribute>& recordDescriptor, const Attribute & attr);
+
+vector<Attribute> getAttributes(const vector<Attribute>& recordDescriptor,
+		const vector<string>& attributeNames);
+
+vector<int> getAttributeIndexes(const vector<Attribute>& recordDescriptor,
+		const vector<string>& attributeNames);
+
 bool equals(float left, float right);
 
 ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute, const void * from,
@@ -229,7 +237,7 @@ private:
 	RecordPage curPage;
 	unsigned curPageNum;
 	ushort curSlotNum;
-	FileHandle* pFileHandle;
+	FileHandle * fileHandle;
 
 	const vector<Attribute>* pRecordDescriptor;
 	string conditionAttribute;
@@ -265,6 +273,8 @@ public:
 // a satisfying record needs to be fetched from the file.
 // "data" follows the same format as RecordBasedFileManager::insertRecord().
 	RC getNextRecord(RID &rid, void *data);
+
+	FileHandle* getFileHandle();
 
 	RC close();
 };
