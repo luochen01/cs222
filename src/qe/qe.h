@@ -2,7 +2,7 @@
 #define _qe_h_
 
 #include <vector>
-
+#include <map>
 #include "../rbf/rbfm.h"
 #include "../rm/rm.h"
 #include "../ix/ix.h"
@@ -25,6 +25,25 @@ struct Value
 {
 	AttrType type;          // type of value
 	void *data;         // value
+
+	Value()
+	{
+		type = TypeInt;
+		data = NULL;
+	}
+
+	Value(AttrType type, void * data)
+	{
+		this->type = type;
+		this->data = data;
+	}
+
+	bool operator<(const Value& rhs) const;
+
+	//make a deep copy of value
+	Value copy() const;
+
+	void free();
 };
 
 struct Condition
@@ -216,8 +235,12 @@ public:
 class Filter: public Iterator
 {
 private:
+	vector<Attribute> inputAttrs;
 	Iterator* input;
-	const Condition& condition;
+	Condition condition;
+
+	int leftIndex;
+	int rightIndex;
 
 	// Filter operator
 public:
@@ -240,8 +263,6 @@ private:
 	vector<Attribute> attrs;
 	vector<int> attrIndexes;
 	byte buffer[PAGE_SIZE];
-
-	unsigned getAttributeOffset(void * data, int index, const vector<Attribute>& recordDescriptor);
 
 	// Projection operator
 public:
@@ -347,6 +368,36 @@ public:
 
 class Aggregate: public Iterator
 {
+private:
+	byte buffer[PAGE_SIZE];
+
+	bool groupBy;
+	Iterator* input;
+	vector<Attribute> inputAttrs;
+	Attribute aggAttr;
+	int aggAttrIndex;
+
+	AggregateOp op;
+	Attribute groupAttr;
+	int groupAttrIndex;
+
+	map<Value, float> aggResults;
+
+	map<Value, float>::iterator aggResultsIter;
+
+	//only used for avg
+	map<Value, float> countResults;
+
+	Value defaultValue;
+
+	void initialize();
+
+	void getAggregateValue(void * data, Value& groupAttrValue, float& aggAttrValue);
+
+	void updateAggregateResult(const Value& groupAttrValue, float aggAttrValue);
+
+	void updateAggregateResult(float& aggResult, float aggAttrValue, AggregateOp op);
+
 	// Aggregation operator
 public:
 	// Mandatory
@@ -354,38 +405,25 @@ public:
 	Aggregate(Iterator *input,          // Iterator of input R
 			Attribute aggAttr,        // The attribute over which we are computing an aggregate
 			AggregateOp op            // Aggregate operation
-			)
-	{
-	}
-	;
-
+			);
 	// Optional for everyone: 5 extra-credit points
 	// Group-based hash aggregation
 	Aggregate(Iterator *input,             // Iterator of input R
 			Attribute aggAttr,           // The attribute over which we are computing an aggregate
 			Attribute groupAttr,         // The attribute over which we are grouping the tuples
 			AggregateOp op              // Aggregate operation
-			)
-	{
-	}
-	;
+			);
+
 	~Aggregate()
 	{
 	}
-	;
 
-	RC getNextTuple(void *data)
-	{
-		return QE_EOF;
-	}
-	;
+	RC getNextTuple(void *data);
+
 	// Please name the output attribute as aggregateOp(aggAttr)
 	// E.g. Relation=rel, attribute=attr, aggregateOp=MAX
 	// output attrname = "MAX(rel.attr)"
-	void getAttributes(vector<Attribute> &attrs) const
-	{
-	}
-	;
+	void getAttributes(vector<Attribute> &attrs) const;
 };
 
 #endif

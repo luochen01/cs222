@@ -13,8 +13,6 @@ class IXFileHandle;
 
 class BTreeKey
 {
-private:
-	ushort copyValue(const Attribute& attr, const void * value);
 
 public:
 	void * value;
@@ -103,7 +101,7 @@ public:
 
 	ushort keySize(ushort offset, const Attribute& attr)
 	{
-		return attributeSize(attr, (byte*) data + offset) + 2 * sizeof(unsigned);
+		return attributeSize(attr.type, (byte*) data + offset) + 2 * sizeof(unsigned);
 	}
 
 	//TODO needs API for redistribute, merge, split two pages

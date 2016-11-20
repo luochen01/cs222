@@ -56,15 +56,15 @@ BTreeKey::BTreeKey()
 	this->value = NULL;
 }
 
-BTreeKey::BTreeKey(const Attribute& attr, const void * value, const RID& rid)
+BTreeKey::BTreeKey(const Attribute& attr, const void * _value, const RID& rid)
 {
-	copyValue(attr, value);
+	this->value = copyAttribute(attr.type, _value);
 	this->rid = rid;
 }
 
-BTreeKey::BTreeKey(const Attribute& attr, const void * value)
+BTreeKey::BTreeKey(const Attribute& attr, const void * _value)
 {
-	copyValue(attr, value);
+	this->value = copyAttribute(attr.type, _value);
 	this->rid.pageNum = 0;
 	this->rid.slotNum = 0;
 }
@@ -77,23 +77,6 @@ void BTreeKey::free()
 		delete[] (byte*) this->value;
 		this->value = NULL;
 	}
-}
-
-ushort BTreeKey::copyValue(const Attribute& attr, const void * value)
-{
-	if (value == NULL)
-	{
-		this->value = NULL;
-		return 0;
-	}
-	else
-	{
-		ushort size = attributeSize(attr, value);
-		this->value = new byte[size];
-		memcpy(this->value, value, size);
-		return size;
-	}
-
 }
 
 int BTreeKey::compare(const void * rhs, const Attribute& attr) const
@@ -140,14 +123,15 @@ int BTreeKey::compare(const BTreeKey& rhs, const Attribute& attr) const
 
 ushort BTreeKey::keySize(const Attribute& attr) const
 {
-	ushort size = attributeSize(attr, value);
+	ushort size = attributeSize(attr.type, value);
 	return size + 2 * sizeof(unsigned);
 }
 
 ushort BTreeKey::readFrom(const Attribute& attr, const void * data)
 {
 	ushort offset = 0;
-	offset += copyValue(attr, data);
+	this->value = copyAttribute(attr.type, data);
+	offset += attributeSize(attr.type, this->value);
 	offset += read(data, rid.pageNum, offset);
 	offset += read(data, rid.slotNum, offset);
 	return offset;
@@ -164,7 +148,7 @@ ushort BTreeKey::writeTo(const Attribute& attr, void * data) const
 
 void BTreeKey::copyFrom(const Attribute& attr, const BTreeKey &rhs)
 {
-	copyValue(attr, rhs.value);
+	value = copyAttribute(attr.type, rhs.value);
 	rid = rhs.rid;
 }
 
@@ -172,25 +156,7 @@ void BTreeKey::print(const Attribute& attr) const
 {
 	cout << '"';
 
-	int ivalue;
-	float fvalue;
-	string svalue;
-
-	switch (attr.type)
-	{
-	case TypeInt:
-		read(value, ivalue, 0);
-		cout << ivalue;
-		break;
-	case TypeReal:
-		read(value, fvalue, 0);
-		cout << fvalue;
-		break;
-	case TypeVarChar:
-		readString(value, svalue, 0);
-		cout << svalue;
-		break;
-	}
+	printAttribute(value, attr.type);
 
 	cout << "(" << rid.pageNum << "," << rid.slotNum << ")";
 
@@ -1174,6 +1140,7 @@ RC IndexManager::insertEntry(IXFileHandle &ixfileHandle, const Attribute &attrib
 
 	BTreePage * rootPage = getRootPage(ixfileHandle, attribute);
 	BTreeKey treeKey(attribute, key, rid);
+
 	BTreeKey newKey;
 	PageNum newPage;
 	bool splitted = false;
@@ -1749,7 +1716,7 @@ IX_ScanIterator::IX_ScanIterator()
 	highKey = NULL;
 	lowKeyInclusive = false;
 	highKeyInclusive = false;
-
+	fileHandle = NULL;
 	end = false;
 }
 

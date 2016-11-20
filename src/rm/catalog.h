@@ -358,6 +358,7 @@ public:
 		tablesTable->addColumn(new ColumnRecord("table-id", TypeInt, 4, 1));
 		tablesTable->addColumn(new ColumnRecord("table-name", TypeVarChar, 50, 2));
 		tablesTable->addColumn(new ColumnRecord("file-name", TypeVarChar, 50, 3));
+
 		columnsTable = new TableRecord();
 		columnsTable->tableId = 2;
 		columnsTable->tableName = COLUMNS_TABLE;
@@ -506,13 +507,9 @@ private:
 
 	unsigned nextTableId;
 
-	RC loadCatalog();
-
 // hard-coded info
 	vector<Attribute> tableRecordDescriptor;
 	vector<Attribute> columnRecordDescriptor;
 
-	RC getTableIDs(vector<int> &tids, vector<RID> &rids);
-	RC getTableIDsFromFile(vector<int> &tids, vector<RID> &rids);
 };
 #endif /* RM_CATALOG_H_ */

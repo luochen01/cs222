@@ -9,25 +9,6 @@
 
 using namespace std;
 
-struct Attribute;
-
-int attributeIndex(const vector<Attribute>& recordDescriptor, const string& attributeName);
-
-int attributeIndex(const vector<Attribute>& recordDescriptor, const Attribute & attr);
-
-vector<Attribute> getAttributes(const vector<Attribute>& recordDescriptor,
-		const vector<string>& attributeNames);
-
-vector<int> getAttributeIndexes(const vector<Attribute>& recordDescriptor,
-		const vector<string>& attributeNames);
-
-bool equals(float left, float right);
-
-ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute, const void * from,
-		ushort fromOffset);
-
-unsigned attributeSize(const Attribute& attr, const void * data);
-
 // Record ID
 typedef struct
 {
@@ -53,6 +34,32 @@ struct Attribute
 class RecordBasedFileManager;
 
 class RecordPage;
+
+int attributeIndex(const vector<Attribute>& recordDescriptor, const string& attributeName);
+
+int attributeIndex(const vector<Attribute>& recordDescriptor, const Attribute & attr);
+
+vector<Attribute> getAttributes(const vector<Attribute>& recordDescriptor,
+		const vector<string>& attributeNames);
+
+Attribute getAttribute(const vector<Attribute>& recordDescriptor, const string& attributeName);
+
+vector<int> getAttributeIndexes(const vector<Attribute>& recordDescriptor,
+		const vector<string>& attributeNames);
+
+bool equals(float left, float right);
+
+ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute, const void * from,
+		ushort fromOffset);
+
+unsigned attributeSize(AttrType type, const void * data);
+
+void * copyAttribute(AttrType type, const void * data);
+
+unsigned attributeOffset(const void * data, int attrIndex,
+		const vector<Attribute>& recordDescriptor);
+
+void printAttribute(const void * data, AttrType type);
 
 /**
  * I used an offset-table based format to store each record. Specially, a record with N fields is stored as follows:
@@ -214,6 +221,8 @@ typedef enum
 	NO_OP	// no condition
 } CompOp;
 
+bool compareAttribute(const void *left, const void *right, CompOp compOp, AttrType attrType);
+
 /********************************************************************************
  The scan iterator is NOT required to be implemented for the part 1 of the project
  ********************************************************************************/
@@ -254,15 +263,6 @@ private:
 	RC getNextRecord(Record& record);
 
 	RC getNextRecordWithinPage(Record& record);
-
-	bool select(const void *conditionData, const void *conditionValue, CompOp compOp,
-			const Attribute& attributeDescriptor);
-
-	bool selectInt(const void * left, const void * right, CompOp compOp);
-
-	bool selectReal(const void * left, const void * right, CompOp compOp);
-
-	bool selectVarchar(const void * left, const void * right, CompOp compOp);
 
 public:
 	RBFM_ScanIterator();

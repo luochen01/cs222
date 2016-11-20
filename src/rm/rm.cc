@@ -18,7 +18,6 @@ RelationManager* RelationManager::instance()
 
 RelationManager::RelationManager()
 {
-	tupleBuffer = new byte[PAGE_SIZE];
 	catalog = Catalog::instance();
 	rbfm = RecordBasedFileManager::instance();
 	im = IndexManager::instance();
@@ -27,7 +26,6 @@ RelationManager::RelationManager()
 
 RelationManager::~RelationManager()
 {
-	delete[] tupleBuffer;
 }
 
 RC RelationManager::loadCatalog()
@@ -70,7 +68,6 @@ RC RelationManager::loadCatalog()
 		ColumnRecord* column = new ColumnRecord;
 		column->rid = rid;
 		column->readFrom(tupleBuffer);
-
 		catalog->loadColumn(column);
 	}
 
@@ -216,13 +213,13 @@ RC RelationManager::doInsertTuple(const string &tableName, const void *data, RID
 	rbfm->closeFile(fileHandle);
 
 	vector<ColumnRecord*> columns = catalog->getTableColumns(tableName);
-
 	unsigned offset = ceil((double) columns.size() / 8);
 
 	for (int i = 0; i < columns.size(); i++)
 	{
 		ColumnRecord* column = columns[i];
-		Attribute attr = attrs[i];
+		Attribute attr = column->toAttribute();
+
 		if (column->hasIndex)
 		{
 			string indexName = getIndexName(tableName, column->columnName);
@@ -233,7 +230,7 @@ RC RelationManager::doInsertTuple(const string &tableName, const void *data, RID
 		}
 		if (!isAttrNull(data, i))
 		{
-			offset += attributeSize(attr, (byte*) data + offset);
+			offset += attributeSize(attr.type, (byte*) data + offset);
 		}
 	}
 
@@ -251,8 +248,10 @@ RC RelationManager::deleteTuple(const string &tableName, const RID &rid)
 
 RC RelationManager::doDeleteTuple(const string &tableName, const RID& rid)
 {
-	// we need to read the original data
-	if (readTuple(tableName, rid, tupleBuffer) != 0)
+// we need to read the original data
+	byte oldTuple[PAGE_SIZE];
+
+	if (readTuple(tableName, rid, oldTuple) != 0)
 	{
 		return -1;
 	}
@@ -283,14 +282,14 @@ RC RelationManager::doDeleteTuple(const string &tableName, const RID& rid)
 		if (column->hasIndex)
 		{
 			string indexName = getIndexName(tableName, column->columnName);
-			if (deleteIndexEntry(indexName, (byte*) tupleBuffer + offset, rid, attr) != 0)
+			if (deleteIndexEntry(indexName, (byte*) oldTuple + offset, rid, attr) != 0)
 			{
 				result = -1;
 			}
 		}
-		if (!isAttrNull(tupleBuffer, i))
+		if (!isAttrNull(oldTuple, i))
 		{
-			offset += attributeSize(attr, (byte*) tupleBuffer + offset);
+			offset += attributeSize(attr.type, (byte*) oldTuple + offset);
 		}
 	}
 
@@ -308,7 +307,8 @@ RC RelationManager::updateTuple(const string &tableName, const void *data, const
 
 RC RelationManager::doUpdateTuple(const string &tableName, const void * data, const RID& rid)
 {
-	if (readTuple(tableName, rid, tupleBuffer) != 0)
+	byte oldTuple[PAGE_SIZE];
+	if (readTuple(tableName, rid, oldTuple) != 0)
 	{
 		return -1;
 	}
@@ -324,7 +324,10 @@ RC RelationManager::doUpdateTuple(const string &tableName, const void * data, co
 		return -1;
 	}
 
-	int result = rbfm->updateRecord(fileHandle, attrs, data, rid);
+	if (rbfm->updateRecord(fileHandle, attrs, data, rid) != 0)
+	{
+		return -1;
+	}
 	rbfm->closeFile(fileHandle);
 
 	vector<ColumnRecord*> columns = catalog->getTableColumns(tableName);
@@ -332,26 +335,28 @@ RC RelationManager::doUpdateTuple(const string &tableName, const void * data, co
 	unsigned oldOffset = ceil((double) columns.size() / 8);
 	unsigned newOffset = oldOffset;
 
+	int result = 0;
+
 	for (int i = 0; i < columns.size(); i++)
 	{
 		ColumnRecord* column = columns[i];
-		Attribute attr = column->toAttribute();
+		Attribute attr = attrs[i];
 		if (column->hasIndex)
 		{
 			string indexName = getIndexName(tableName, column->columnName);
-			if (updateIndexEntry(indexName, (byte*) tupleBuffer + oldOffset,
+			if (updateIndexEntry(indexName, (byte*) oldTuple + oldOffset,
 					(byte*) data + newOffset, rid, attr) != 0)
 			{
 				result = -1;
 			}
 		}
-		if (!isAttrNull(tupleBuffer, i))
+		if (!isAttrNull(oldTuple, i))
 		{
-			oldOffset += attributeSize(attr, (byte*) tupleBuffer + oldOffset);
+			oldOffset += attributeSize(attr.type, (byte*) oldTuple + oldOffset);
 		}
 		if (!isAttrNull(data, i))
 		{
-			newOffset += attributeSize(attr, (byte*) tupleBuffer + newOffset);
+			newOffset += attributeSize(attr.type, (byte*) data + newOffset);
 		}
 	}
 
@@ -574,10 +579,9 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 		return -1;
 	}
 	RID rid;
-	int result = 0;
 	while (it.getNextTuple(rid, tupleBuffer) != EOF)
 	{
-		if (im->insertEntry(fileHandle, attr, tupleBuffer, rid) != 0)
+		if (im->insertEntry(fileHandle, attr, (byte*) tupleBuffer + 1, rid) != 0)
 		{
 			im->closeFile(fileHandle);
 			im->destroyFile(indexName);
@@ -591,7 +595,7 @@ RC RelationManager::createIndex(const string &tableName, const string &attribute
 		return -1;
 	}
 
-	column->hasIndex = true;
+	column->hasIndex = 1;
 
 	column->writeTo(tupleBuffer);
 	return doUpdateTuple(COLUMNS_TABLE, tupleBuffer, column->rid);

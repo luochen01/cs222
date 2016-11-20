@@ -12,6 +12,122 @@ RecordBasedFileManager* RecordBasedFileManager::_rbf_manager = 0;
 
 Catalog * Catalog::_ctlg = 0;
 
+bool compareInt(const void *left, const void *right, CompOp compOp);
+bool compareReal(const void *left, const void *right, CompOp compOp);
+bool compareVarchar(const void *left, const void *right, CompOp compOp);
+
+bool compareAttribute(const void *left, const void *right, CompOp compOp, AttrType attrType)
+{
+	if (compOp == NO_OP)
+	{
+		return true;
+	}
+	switch (attrType)
+	{
+	case TypeInt:
+		return compareInt(left, right, compOp);
+	case TypeReal:
+		return compareReal(left, right, compOp);
+	case TypeVarChar:
+		return compareVarchar(left, right, compOp);
+	}
+	return false;
+}
+
+bool compareInt(const void *left, const void *right, CompOp compOp)
+{
+	if (left == NULL || right == NULL)
+	{
+		return false;
+	}
+//might be null
+	int leftValue = *(int *) left;
+	int rightValue = *(int *) right;
+
+	switch (compOp)
+	{
+	case EQ_OP:	// =
+		return leftValue == rightValue;
+	case LT_OP:
+		return leftValue < rightValue;
+	case LE_OP:
+		return leftValue <= rightValue;
+	case GT_OP:
+		return leftValue > rightValue;
+	case GE_OP:
+		return leftValue >= rightValue;
+	case NE_OP:
+		return leftValue != rightValue;
+	case NO_OP:
+		return true;
+	}
+
+	return false;
+}
+
+bool compareReal(const void *left, const void *right, CompOp compOp)
+{
+	if (left == NULL || right == NULL)
+	{
+		return false;
+	}
+//might be null
+	float leftValue = *(float *) left;
+	float rightValue = *(float *) right;
+
+	switch (compOp)
+	{
+	case EQ_OP:	// =
+		return leftValue == rightValue;
+	case LT_OP:
+		return leftValue < rightValue;
+	case LE_OP:
+		return leftValue <= rightValue;
+	case GT_OP:
+		return leftValue > rightValue;
+	case GE_OP:
+		return leftValue >= rightValue;
+	case NE_OP:
+		return leftValue != rightValue;
+	case NO_OP:
+		return true;
+	}
+
+	return false;
+}
+
+bool compareVarchar(const void *left, const void *right, CompOp compOp)
+{
+	if (left == NULL || right == NULL)
+	{
+		return false;
+	}
+
+	string leftValue, rightValue;
+	readString(left, leftValue, 0);
+	readString(right, rightValue, 0);
+	int comp = leftValue.compare(rightValue);
+
+	switch (compOp)
+	{
+	case EQ_OP:	// =
+		return comp == 0;
+	case LT_OP:
+		return comp < 0;
+	case LE_OP:
+		return comp == 0 || comp < 0;
+	case GT_OP:
+		return comp > 0;
+	case GE_OP:
+		return comp > 0 || comp == 0;
+	case NE_OP:
+		return comp != 0;
+	case NO_OP:
+		return true;
+	}
+	return false;
+}
+
 int attributeIndex(const vector<Attribute>& recordDescriptor, const string& attributeName)
 {
 	for (int i = 0; i < recordDescriptor.size(); i++)
@@ -47,6 +163,20 @@ vector<Attribute> getAttributes(const vector<Attribute>& recordDescriptor,
 		result.push_back(recordDescriptor[index]);
 	}
 	return result;
+}
+
+Attribute getAttribute(const vector<Attribute>& recordDescriptor, const string& attributeName)
+{
+	int index = attributeIndex(recordDescriptor, attributeName);
+	if (index == -1)
+	{
+		return Attribute();
+	}
+	else
+	{
+		return recordDescriptor[index];
+	}
+
 }
 
 vector<int> getAttributeIndexes(const vector<Attribute>& recordDescriptor,
@@ -116,10 +246,10 @@ ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute,
 	return 0;
 }
 
-unsigned attributeSize(const Attribute& attr, const void * data)
+unsigned attributeSize(AttrType type, const void * data)
 {
 	int size = 0;
-	switch (attr.type)
+	switch (type)
 	{
 	case TypeInt:
 	case TypeReal:
@@ -131,6 +261,58 @@ unsigned attributeSize(const Attribute& attr, const void * data)
 		break;
 	}
 	return size;
+}
+
+void * copyAttribute(AttrType type, const void * data)
+{
+	if (data == NULL)
+	{
+		return NULL;
+	}
+	else
+	{
+		ushort size = attributeSize(type, data);
+		void * result = new byte[size];
+		memcpy(result, data, size);
+		return result;
+	}
+}
+
+unsigned attributeOffset(const void* data, int index, const vector<Attribute>& recordDescriptor)
+{
+	unsigned offset = ceil((double) recordDescriptor.size() / 8);
+	for (int i = 0; i < index; i++)
+	{
+		if (!isAttrNull(data, i))
+		{
+			offset += ::attributeSize(recordDescriptor[i].type, (byte*) data + offset);
+		}
+	}
+	return offset;
+}
+
+void printAttribute(const void * data, AttrType type)
+{
+	int ivalue = 0;
+	float fvalue = 0;
+	string svalue;
+	switch (type)
+	{
+	case TypeInt:
+		read(data, ivalue, 0);
+		cout << "int ";
+		cout << ivalue;
+		break;
+	case TypeReal:
+		cout << "real ";
+		read(data, fvalue, 0);
+		cout << fvalue;
+		break;
+	case TypeVarChar:
+		readString(data, svalue, 0);
+		cout << svalue;
+		break;
+	}
 }
 
 Record::Record() :
@@ -562,121 +744,6 @@ RC RBFM_ScanIterator::getNextRecordWithinPage(Record& record)
 	return -1;
 }
 
-bool RBFM_ScanIterator::select(const void *conditionData, const void *conditionValue, CompOp compOp,
-		const Attribute& attributeDescriptor)
-{
-	switch (attributeDescriptor.type)
-	{
-	case TypeInt:
-		return selectInt(conditionData, conditionValue, compOp);
-	case TypeReal:
-		return selectReal(conditionData, conditionValue, compOp);
-	case TypeVarChar:
-		return selectVarchar(conditionData, conditionValue, compOp);
-	default:
-		return compOp == NO_OP;
-	}
-
-}
-
-bool RBFM_ScanIterator::selectInt(const void *conditionData, const void *conditionValue,
-		CompOp compOp)
-{
-	if (conditionData == NULL || conditionValue == NULL)
-	{
-		return false;
-	}
-//might be null
-	int left = *(int *) conditionData;
-	int right = *(int *) conditionValue;
-
-	switch (compOp)
-	{
-	case EQ_OP:	// =
-		return left == right;
-	case LT_OP:
-		return left < right;
-	case LE_OP:
-		return left <= right;
-	case GT_OP:
-		return left > right;
-	case GE_OP:
-		return left >= right;
-	case NE_OP:
-		return left != right;
-	case NO_OP:
-		return true;
-	}
-
-	return false;
-}
-
-bool RBFM_ScanIterator::selectReal(const void *conditionData, const void *conditionValue,
-		CompOp compOp)
-{
-	if (conditionData == NULL || conditionValue == NULL)
-	{
-		return false;
-	}
-//might be null
-	float left = *(float *) conditionData;
-	float right = *(float *) conditionValue;
-
-	switch (compOp)
-	{
-	case EQ_OP:	// =
-		return left == right;
-	case LT_OP:
-		return left < right;
-	case LE_OP:
-		return left <= right;
-	case GT_OP:
-		return left > right;
-	case GE_OP:
-		return left >= right;
-	case NE_OP:
-		return left != right;
-	case NO_OP:
-		return true;
-	}
-
-	return false;
-}
-
-bool RBFM_ScanIterator::selectVarchar(const void *conditionData, const void *conditionValue,
-		CompOp compOp)
-{
-	if (conditionData == NULL || conditionValue == NULL)
-	{
-		return false;
-	}
-	int size;
-	read(conditionData, size, 0);
-	string left = string((char *) conditionData + 4, (char *) conditionData + 4 + size);
-	read(conditionValue, size, 0);
-	string right = string((char*) conditionValue + 4, (char*) conditionValue + 4 + size);
-	int comp = left.compare(right);
-
-	switch (compOp)
-	{
-	case EQ_OP:	// =
-		return comp == 0;
-	case LT_OP:
-		return comp < 0;
-	case LE_OP:
-		return comp == 0 || comp < 0;
-	case GT_OP:
-		return comp > 0;
-	case GE_OP:
-		return comp > 0 || comp == 0;
-	case NE_OP:
-		return comp != 0;
-	case NO_OP:
-		return true;
-	}
-	return false;
-}
-
 // Never keep the results in the memory. When getNextRecord() is called,
 // a satisfying record needs to be fetched from the file.
 // "data" follows the same format as RecordBasedFileManager::insertRecord().
@@ -702,7 +769,8 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data)
 			{
 				conditionData = record.attribute(conditionNum);
 			}
-			if (!select(conditionData, conditionValue, compOp, oldRecordDescriptor[conditionNum]))
+			if (!compareAttribute(conditionData, conditionValue, compOp,
+					oldRecordDescriptor[conditionNum].type))
 			{
 				continue;
 			}

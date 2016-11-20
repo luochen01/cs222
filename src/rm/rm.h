@@ -142,7 +142,7 @@ private:
 	static RelationManager *_rm;
 
 	//Added fields
-	byte * tupleBuffer;
+	byte tupleBuffer[PAGE_SIZE];
 
 	Catalog * catalog;
 
