@@ -297,6 +297,8 @@ protected:
 	Iterator* leftIn;
 	Iterator* rightIn;
 	Condition condition;
+	int leftIndex;
+	int rightIndex;
 
 	vector<Attribute> leftAttrs;
 	vector<Attribute> rightAttrs;
@@ -318,9 +320,6 @@ class BNLJoin: public Join
 protected:
 	unsigned numPages;
 	// Block nested-loop join operator
-
-	int leftIndex;
-	int rightIndex;
 
 	map<Value, vector<byte *>> leftTuples;
 	int nextJoinPos;
@@ -350,6 +349,9 @@ public:
 
 class INLJoin: public Join
 {
+protected:
+
+	RC readFromRight(IndexScan* rightScan, void * data);
 
 	// Index nested-loop join operator
 public:

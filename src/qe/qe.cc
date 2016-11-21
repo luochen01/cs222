@@ -226,6 +226,9 @@ Join::Join(Iterator* leftIn, Iterator* rightIn, const Condition& condition)
 	this->leftIn->getAttributes(leftAttrs);
 	this->rightIn->getAttributes(rightAttrs);
 
+	this->leftIndex = ::attributeIndex(leftAttrs, condition.lhsAttr);
+	this->rightIndex = ::attributeIndex(rightAttrs, condition.rhsAttr);
+
 	outputAttrs.insert(outputAttrs.end(), leftAttrs.begin(), leftAttrs.end());
 	outputAttrs.insert(outputAttrs.end(), rightAttrs.begin(), rightAttrs.end());
 }
@@ -240,9 +243,7 @@ BNLJoin::BNLJoin(Iterator *leftIn, TableScan *rightIn, const Condition &conditio
 		Join(leftIn, rightIn, condition)
 {
 	this->numPages = numPages;
-	this->condition = condition;
-	this->leftIndex = ::attributeIndex(leftAttrs, condition.lhsAttr);
-	this->rightIndex = ::attributeIndex(rightAttrs, condition.rhsAttr);
+
 	this->nextJoinPos = 0;
 
 	loadLeftTuples();
@@ -343,11 +344,47 @@ INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &conditio
 		Join(leftIn, rightIn, condition)
 {
 
+	if (leftIn->getNextTuple(leftBuffer) == QE_EOF)
+	{
+		end = true;
+		return;
+	}
+
+	Value leftValue = getAttributeValue(leftBuffer, leftIndex, leftAttrs);
+	rightIn->setIterator(leftValue.data, leftValue.data, true, true);
+
 }
 
 RC INLJoin::getNextTuple(void *data)
 {
+	IndexScan* rightScan = (IndexScan*) rightIn;
+
+	if (readFromRight((rightScan), data) != QE_EOF)
+	{
+		return 0;
+	}
+
+	while (leftIn->getNextTuple(leftBuffer) != QE_EOF)
+	{
+		Value leftValue = getAttributeValue(leftBuffer, leftIndex, leftAttrs);
+		rightScan->setIterator(leftValue.data, leftValue.data, true, true);
+		if (readFromRight((rightScan), data) != QE_EOF)
+		{
+			return 0;
+		}
+	}
+
 	return IX_EOF;
+}
+
+RC INLJoin::readFromRight(IndexScan* rightScan, void * data)
+{
+	if (rightScan->getNextTuple(rightBuffer) != QE_EOF)
+	{
+		outputJoinedTuple(data, leftBuffer, rightBuffer, leftAttrs, rightAttrs);
+		return 0;
+	}
+	return QE_EOF;
 }
 
 GHJoin::GHJoin(Iterator *leftIn, Iterator *rightIn, const Condition &condition,
