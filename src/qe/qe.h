@@ -68,11 +68,12 @@ public:
 	}
 
 	virtual RC getNextTuple(void *data) = 0;
+
 	virtual void getAttributes(vector<Attribute> &attrs) const = 0;
+
 	virtual ~Iterator()
 	{
 	}
-	;
 };
 
 class TableScan: public Iterator
@@ -232,11 +233,28 @@ public:
 	;
 };
 
-class Filter: public Iterator
+class UnaryOperator: public Iterator
 {
-private:
-	vector<Attribute> inputAttrs;
+protected:
 	Iterator* input;
+	byte buffer[PAGE_SIZE];
+	vector<Attribute> inputAttrs;
+	vector<Attribute> outputAttrs;
+
+public:
+	UnaryOperator(Iterator* input);
+
+	virtual ~UnaryOperator()
+	{
+
+	}
+
+	virtual void getAttributes(vector<Attribute> &attrs) const;
+};
+
+class Filter: public UnaryOperator
+{
+protected:
 	Condition condition;
 
 	int leftIndex;
@@ -251,18 +269,12 @@ public:
 
 	RC getNextTuple(void *data);
 
-	// For attribute in vector<Attribute>, name it as rel.attr
-	void getAttributes(vector<Attribute> &attrs) const;
 };
 
-class Project: public Iterator
+class Project: public UnaryOperator
 {
 private:
-	Iterator* input;
-	vector<Attribute> inputAttrs;
-	vector<Attribute> attrs;
 	vector<int> attrIndexes;
-	byte buffer[PAGE_SIZE];
 
 	// Projection operator
 public:
@@ -274,106 +286,111 @@ public:
 
 	RC getNextTuple(void *data);
 
-	// For attribute in vector<Attribute>, name it as rel.attr
-	void getAttributes(vector<Attribute> &attrs) const;
 };
 
-class BNLJoin: public Iterator
+class Join: public Iterator
 {
+protected:
+	byte leftBuffer[PAGE_SIZE];
+	byte rightBuffer[PAGE_SIZE];
+
+	Iterator* leftIn;
+	Iterator* rightIn;
+	Condition condition;
+
+	vector<Attribute> leftAttrs;
+	vector<Attribute> rightAttrs;
+	vector<Attribute> outputAttrs;
+
+	Join(Iterator* leftIn, Iterator* rightIn, const Condition& condition);
+
+	virtual ~Join()
+	{
+
+	}
+
+	void getAttributes(vector<Attribute> &attrs) const;
+
+};
+
+class BNLJoin: public Join
+{
+protected:
+	unsigned numPages;
 	// Block nested-loop join operator
+
+	int leftIndex;
+	int rightIndex;
+
+	map<Value, vector<byte *>> leftTuples;
+	int nextJoinPos;
+	Value rightValue;
+	vector<byte*>* matchedLeftTuples;
+
+	RC loadLeftTuples();
+	RC loadNextRightTuple();
+	void clearLeftTuples();
+
 public:
 	BNLJoin(Iterator *leftIn,            // Iterator of input R
 			TableScan *rightIn,           // TableScan Iterator of input S
 			const Condition &condition,   // Join condition
 			const unsigned numPages       // # of pages that can be loaded into memory,
 										  //   i.e., memory block size (decided by the optimizer)
-			)
-	{
-	}
-	;
+			);
+
 	~BNLJoin()
 	{
-	}
-	;
 
-	RC getNextTuple(void *data)
-	{
-		return QE_EOF;
 	}
-	;
-	// For attribute in vector<Attribute>, name it as rel.attr
-	void getAttributes(vector<Attribute> &attrs) const
-	{
-	}
-	;
+
+	RC getNextTuple(void *data);
+
 };
 
-class INLJoin: public Iterator
+class INLJoin: public Join
 {
+
 	// Index nested-loop join operator
 public:
 	INLJoin(Iterator *leftIn,           // Iterator of input R
 			IndexScan *rightIn,          // IndexScan Iterator of input S
 			const Condition &condition   // Join condition
-			)
-	{
-	}
-	;
+			);
+
 	~INLJoin()
 	{
 	}
-	;
 
-	RC getNextTuple(void *data)
-	{
-		return QE_EOF;
-	}
-	;
-	// For attribute in vector<Attribute>, name it as rel.attr
-	void getAttributes(vector<Attribute> &attrs) const
-	{
-	}
-	;
+	RC getNextTuple(void *data);
+
 };
 
 // Optional for everyone. 10 extra-credit points
-class GHJoin: public Iterator
+class GHJoin: public Join
 {
+protected:
+	unsigned numPartitions;
 	// Grace hash join operator
 public:
 	GHJoin(Iterator *leftIn,               // Iterator of input R
 			Iterator *rightIn,               // Iterator of input S
 			const Condition &condition,      // Join condition (CompOp is always EQ)
 			const unsigned numPartitions // # of partitions for each relation (decided by the optimizer)
-			)
-	{
-	}
-	;
+			);
+
 	~GHJoin()
 	{
 	}
-	;
 
-	RC getNextTuple(void *data)
-	{
-		return QE_EOF;
-	}
-	;
-	// For attribute in vector<Attribute>, name it as rel.attr
-	void getAttributes(vector<Attribute> &attrs) const
-	{
-	}
-	;
+	RC getNextTuple(void *data);
+
 };
 
-class Aggregate: public Iterator
+class Aggregate: public UnaryOperator
 {
 private:
-	byte buffer[PAGE_SIZE];
-
 	bool groupBy;
-	Iterator* input;
-	vector<Attribute> inputAttrs;
 	Attribute aggAttr;
 	int aggAttrIndex;
 
@@ -382,7 +399,6 @@ private:
 	int groupAttrIndex;
 
 	map<Value, float> aggResults;
-
 	map<Value, float>::iterator aggResultsIter;
 
 	//only used for avg
@@ -420,10 +436,6 @@ public:
 
 	RC getNextTuple(void *data);
 
-	// Please name the output attribute as aggregateOp(aggAttr)
-	// E.g. Relation=rel, attribute=attr, aggregateOp=MAX
-	// output attrname = "MAX(rel.attr)"
-	void getAttributes(vector<Attribute> &attrs) const;
 };
 
 #endif

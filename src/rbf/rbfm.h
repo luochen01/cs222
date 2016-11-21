@@ -54,6 +54,8 @@ ushort copyAttributeData(void * to, ushort toOffset, const Attribute& attribute,
 
 unsigned attributeSize(AttrType type, const void * data);
 
+unsigned tupleSize(const vector<Attribute>& attrs, const void * data);
+
 void * copyAttribute(AttrType type, const void * data);
 
 unsigned attributeOffset(const void * data, int attrIndex,

@@ -263,6 +263,16 @@ unsigned attributeSize(AttrType type, const void * data)
 	return size;
 }
 
+unsigned tupleSize(const vector<Attribute>& attrs, const void * data)
+{
+	unsigned size = ceil((double) attrs.size() / 8);
+	for (int i = 0; i < attrs.size(); i++)
+	{
+		size += attributeSize(attrs[i].type, (byte*) data + size);
+	}
+	return size;
+}
+
 void * copyAttribute(AttrType type, const void * data)
 {
 	if (data == NULL)
