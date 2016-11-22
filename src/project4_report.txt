@@ -1,0 +1,50 @@
+1. Basic information
+Team number (e.g., 01) : 05
+#1 Student ID : 51288702
+#1 Student Name : Chen Luo
+#2 Student ID : 33728881
+#2 Student Name : Junjie Shen
+OS (bit) :64, Ubuntu 16.04.02
+gcc version : 5.4.0
+
+
+2. Catalog information about Index
+- Show your catalog information about an index (tables, columns). 
+To support index, we add one column named 'hasIndex' with TypeInt in the Columns table to indicate whether a given column is associated with an index. If hasIndex == 1, then the column has an index for it; otherwise if hasIndex, the column does not has an index.
+
+Now the Columns table has the following columns:
+table-id, column-name, column-type, column-length, column-position, column-version, hasIndex
+
+3. Block Nested Loop Join (If you have implemented this feature)
+- Describe how your block nested loop join works (especially, how you manage the given buffers.)
+For block nested loop join, we use a map<Value, vector<void*>> to hold tuples from the left table, whose key is an attribtue Value, while value is a vector of tuples. To join the two tables, we first load tuples from the left table until the total size exceeds numPages * PAGE_SIZE. After that, we iterate the tuples from the right table to perform the join operation. Specifically, for each tuple from the right table, we extract its join value, and whether it's contained in map<Value, vector<void*>>. If so, each tuple in that vector<void*> can be joined with the tuple from the right table. After all tuples from the right table are processed, we clear the map<Value, vector<void*>>, load more tuples from the left table again, and process the tuples of the right table again. This process is iterated until all tuples from the left table as well as the right table are processed.
+
+
+4. Index Nested Loop Join
+- Describe how your index nested loop join works.
+For index nested loop join, we iterate all tuples from the left table to find the matching tuples from the right table to produce the join result. Specfically, for each tuple from the left table, we extract its join condition value v, and use the indexScan operator of the right table to retrieve tuples from the right table with the matching value v. For each retrieved table, we join them to produce one joined tuple.
+
+
+5. Grace Hash Join (If you have implemented this feature)
+- Describe how your grace hash join works (especially, in-memory structure).
+
+
+6. Aggregation
+- Describe how your aggregation (basic, group-based hash) works.
+For aggregation (both basic and group-based), we use a map<Value, float> aggResults to store temporary aggregation results for each attribute Value, and a map<Value, float> countResults to stores the count of each Value. For uniformality, we use an empty value for basic aggregation.
+
+To compute the aggregate results, we iterate through all tuples from the input table to update aggregation results incrementally. Specifically, for each tuple, we extract its group attribute value (if necessary), updates aggResults based on the given aggregation operation, and increase the count of this value by 1 (update countResults). Then, for AVG operation, the final value is calculated by diving aggResults with countResults; while for other operations, the final value is simply extracted from aggResults.
+
+7. Implementation Detail
+- Have you added your own source file (.cc or .h)?
+No.
+
+- Have you implemented any optional features? Then, describe them here.
+We implemented all extra features, including Grace Hash Join and Group-based Hash Aggregation.
+
+- Other implementation details:
+We reorganize the class inheritance structures of Iterator a little bit. Specfically, we add one class UnaryOperator, which is the base class for Filter, Project, and Aggregate, and one class Join, which is the base class BNLJoin, INLJoin, and GHJoin.
+
+6. Other (optional)
+- Freely use this section to tell us about things that are related to the project 4, but not related to the other sections (optional)
+
