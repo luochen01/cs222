@@ -496,7 +496,13 @@ public:
 	int getTableCurrentVersionId(const string& tableName)
 	{
 		TableRecord* table = getTableByName(tableName);
-		assert(table!=NULL);
+        // FIXME
+        // Junjie: Grace Hash Join partitions don't have metadata
+        // Simply ignore and set the version id as 0
+		if (table==NULL)
+        {
+            return 0;
+        }
 		return table->currentVersion->versionId;
 	}
 

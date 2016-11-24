@@ -1,7 +1,7 @@
 
 include ../makefile.inc
 
-all: libqe.a qetest_01 qetest_02 qetest_03 qetest_04 qetest_05 qetest_06 qetest_07 qetest_08 qetest_09 qetest_10 qetest_11 qetest_12 qetest_13 qetest_14 qetest_15 qetest_16
+all: libqe.a qetest_01 qetest_02 qetest_03 qetest_04 qetest_05 qetest_06 qetest_07 qetest_08 qetest_09 qetest_10 qetest_11 qetest_12 qetest_13 qetest_14 qetest_15 qetest_16 
 
 # lib file dependencies
 libqe.a: libqe.a(qe.o)  # and possibly other .o files
@@ -47,3 +47,6 @@ clean:
 	-rm qetest_01 qetest_02 qetest_03 qetest_04 qetest_05 qetest_06 qetest_07 qetest_08 qetest_09 qetest_10 qetest_11 qetest_12 qetest_13 qetest_14 qetest_15 qetest_16 *.a *.o *~ Tables* Columns* left* right* large*
 	$(MAKE) -C $(CODEROOT)/rm clean
 	$(MAKE) -C $(CODEROOT)/ix clean 
+
+clear:
+	rm -f *~ Tables* Columns* left* right* large* group*

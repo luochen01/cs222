@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+unsigned GHJ_count = 0;
+
 const string AggregateOpNames[] =
 { "MIN", "MAX", "COUNT", "SUM", "AVG" };
 
@@ -27,6 +29,44 @@ Value getAttributeValue(const void * data, int index, const vector<Attribute>& a
 {
 	unsigned offset = attributeOffset(data, index, attrs);
 	return Value(attrs[index].type, (byte*) data + offset);
+}
+
+unsigned varCharHash(const void *data)
+{
+    unsigned len = 0;
+    memcpy(&len, data, sizeof(int));
+    char *varChar = (char *)data + sizeof(int);
+    unsigned hashVal = 0x55555555;
+
+    unsigned i = 0;
+    while (i < len)
+    {
+        hashVal ^= varChar[i];
+        hashVal = (hashVal << 5) | (hashVal >> 3);
+        i++;
+    }
+
+    return hashVal;
+}
+
+unsigned getHashKey(Value& value, const unsigned numPartitions)
+{
+	switch (value.type)
+	{
+	case TypeInt:
+        {
+            return *((unsigned *)value.data)%numPartitions;
+        }
+	case TypeReal:
+        {
+            float val = *((float *)value.data);
+            return (unsigned)val%numPartitions;
+        }
+	case TypeVarChar:
+        {
+            return varCharHash(value.data)%numPartitions;
+        }
+	}
 }
 
 void outputJoinedTuple(void *data, const void * left, const void * right,
@@ -387,15 +427,139 @@ RC INLJoin::readFromRight(IndexScan* rightScan, void * data)
 	return QE_EOF;
 }
 
+void GHJoin::doPartition()
+{
+    RecordBasedFileManager* rbfm = RecordBasedFileManager::instance();
+    RID rid;
+    unsigned partitionIdx;
+    while (leftIn->getNextTuple(leftBuffer) != QE_EOF)
+	{
+		Value leftValue = getAttributeValue(leftBuffer, leftIndex, leftAttrs);
+        partitionIdx = getHashKey(leftValue, numPartitions);
+        rbfm->insertRecord(*(leftPartitionFHs[partitionIdx]), leftAttrs, leftBuffer, rid);
+	}
+
+    while (rightIn->getNextTuple(rightBuffer) != QE_EOF)
+	{
+		Value rightValue = getAttributeValue(rightBuffer, rightIndex, rightAttrs);
+        partitionIdx = getHashKey(rightValue, numPartitions);
+        rbfm->insertRecord(*(rightPartitionFHs[partitionIdx]), rightAttrs, rightBuffer, rid);
+	}
+}
+
 GHJoin::GHJoin(Iterator *leftIn, Iterator *rightIn, const Condition &condition,
 		const unsigned numPartitions) :
 		Join(leftIn, rightIn, condition)
 {
+    RecordBasedFileManager* rbfm = RecordBasedFileManager::instance();
 	this->numPartitions = numPartitions;
+    string name;
+
+    partitionIndex = 0;
+    leftPartitionIterator = NULL;
+    rightPartitionIterator = NULL;
+
+    nextJoinPos = -1;
+
+    for (int i = 0; i < numPartitions; i++)
+    {
+        leftPartitionFHs.push_back(new FileHandle());
+        rightPartitionFHs.push_back(new FileHandle());
+
+        name = string("left") + "_join" + to_string(GHJ_count) + "_part" + to_string(i);
+        rbfm->createFile(name);
+        rbfm->openFile(name, *leftPartitionFHs[i]);
+        leftPartitionNames.push_back(name);
+
+        name = string("right") + "_join" + to_string(GHJ_count) + "_part" + to_string(i);
+        rbfm->createFile(name);
+        rbfm->openFile(name, *rightPartitionFHs[i]);
+        rightPartitionNames.push_back(name);
+    }
+
+    doPartition();
+
+    GHJ_count++;
+}
+
+RC GHJoin::loadNextPartition()
+{
+    RecordBasedFileManager* rbfm = RecordBasedFileManager::instance();
+	for (map<Value, vector<byte*>>::iterator it = leftTuples.begin(); it != leftTuples.end(); it++)
+	{
+		for (byte* data : it->second)
+		{
+			delete[] data;
+		}
+	}
+	leftTuples.clear();
+
+    if (leftPartitionIterator != NULL) {
+        delete leftPartitionIterator;
+    }
+    if (rightPartitionIterator != NULL) {
+        delete rightPartitionIterator;
+    }
+
+    if (partitionIndex == numPartitions)
+    {
+        return -1;
+    }
+
+    leftPartitionIterator = new RBFMScan(*rbfm, leftPartitionFHs[partitionIndex], leftAttrs);
+    rightPartitionIterator = new RBFMScan(*rbfm, rightPartitionFHs[partitionIndex], rightAttrs);
+
+    // Build an in-memory hash table for left
+    while (leftPartitionIterator->getNextTuple(leftBuffer) != QE_EOF)
+	{
+        unsigned size = tupleSize(leftAttrs, leftBuffer);
+	    byte* data = new byte[size];
+	    memcpy(data, leftBuffer, size);
+
+		Value value = getAttributeValue(data, leftIndex, leftAttrs);
+		leftTuples[value].push_back(data);
+    }
+
+    partitionIndex++;
+    return 0;
 }
 
 RC GHJoin::getNextTuple(void *data)
 {
+    if (leftPartitionIterator == NULL || rightPartitionIterator == NULL) {
+        loadNextPartition();
+    }
+
+    if (nextJoinPos != -1 && nextJoinPos < matchedLeftTuples->size())
+	{
+		outputJoinedTuple(data, matchedLeftTuples->at(nextJoinPos++), rightBuffer, leftAttrs, rightAttrs);
+		return 0;
+	}
+
+    while(!end)
+    {
+        while(leftTuples.size() > 0 &&
+                rightPartitionIterator->getNextTuple(rightBuffer) != QE_EOF)
+        {
+            Value rightValue = getAttributeValue(rightBuffer, rightIndex, rightAttrs);
+            map<Value, vector<byte*> >::iterator it = leftTuples.find(rightValue);
+            if (it != leftTuples.end())
+            {
+                nextJoinPos = 0;
+                matchedLeftTuples = &(it->second);
+
+                outputJoinedTuple(data, matchedLeftTuples->at(nextJoinPos++), rightBuffer,
+                        leftAttrs, rightAttrs);
+                return 0;
+            }
+        }
+        if (loadNextPartition() != 0)
+        {
+            nextJoinPos = -1;
+            end = true;
+        }
+    }
+
 	return QE_EOF;
 }
 

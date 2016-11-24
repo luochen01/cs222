@@ -31,14 +31,14 @@ RC testCase_11() {
 	int actualResultCnt = 0;
 	float valueC = 0;
 	int numPartitons = 10;
-	
+
 	// Create GHJoin
 	GHJoin *ghJoin = new GHJoin(leftIn, rightIn, cond, numPartitons);
 
 	// Go over the data through iterator
 	void *data = malloc(bufSize);
 	bool nullBit = false;
-	
+
 	while (ghJoin->getNextTuple(data) != QE_EOF) {
 
 		// At this point, partitions should be on disk.
@@ -155,9 +155,9 @@ int main() {
 		cerr << "***** [FAIL] QE Test Case 11 failed. *****" << endl;
 		return fail;
 	}
-	
+
 	if (testCase_11() != success) {
-		cerr << "***** [FAIL] QE Test Case 11 failed. *****" << endl;
+		cerr << "***** [FAIL------] QE Test Case 11 failed. *****" << endl;
 		return fail;
 	} else {
 		cerr << "***** QE Test Case 11 finished. The result will be examined. *****" << endl;

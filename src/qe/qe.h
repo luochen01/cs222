@@ -76,6 +76,61 @@ public:
 	}
 };
 
+class RBFMScan: public Iterator
+{
+	// A wrapper inheriting Iterator over RBFM_ScanIterator
+public:
+	RecordBasedFileManager &rbfm;
+    string fileName;
+    FileHandle* pFileHandle;
+	RBFM_ScanIterator *iter;
+	vector<Attribute> attrs;
+	vector<string> attrNames;
+	RID rid;
+
+	RBFMScan(RecordBasedFileManager &rbfm, FileHandle* pfh, vector<Attribute>& attributes) :
+			rbfm(rbfm)
+	{
+        this->fileName = fileName;
+        pFileHandle = pfh;
+        attrs = attributes;
+		unsigned i;
+		for (i = 0; i < attrs.size(); ++i)
+		{
+			// convert to char *
+			attrNames.push_back(attrs.at(i).name);
+		}
+
+		// Call RBFM scan to get an iterator
+		iter = new RBFM_ScanIterator();
+
+        if (rbfm.scan(*pFileHandle, attrs, "", NO_OP, NULL, attrNames, *iter) != 0)
+	    {
+            logError("failed to scan RBFM!");
+	    }
+	}
+	;
+
+	RC getNextTuple(void *data)
+	{
+		return iter->getNextRecord(rid, data);
+	}
+	;
+
+	void getAttributes(vector<Attribute> &attrs) const
+	{
+		attrs.clear();
+		attrs = this->attrs;
+	}
+	;
+
+	~RBFMScan()
+	{
+		iter->close();
+	}
+	;
+};
+
 class TableScan: public Iterator
 {
 	// A wrapper inheriting Iterator over RM_ScanIterator
@@ -373,6 +428,21 @@ class GHJoin: public Join
 {
 protected:
 	unsigned numPartitions;
+    vector<string> leftPartitionNames;
+    vector<FileHandle *> leftPartitionFHs;
+    vector<string> rightPartitionNames;
+    vector<FileHandle *> rightPartitionFHs;
+
+    // indices and iterators for partitions
+    unsigned partitionIndex;
+    RBFMScan* leftPartitionIterator;
+    RBFMScan* rightPartitionIterator;
+
+    vector<byte*>* matchedLeftTuples;
+
+	int nextJoinPos;
+	map<Value, vector<byte *> > leftTuples;
+
 	// Grace hash join operator
 public:
 	GHJoin(Iterator *leftIn,               // Iterator of input R
@@ -386,7 +456,8 @@ public:
 	}
 
 	RC getNextTuple(void *data);
-
+    void doPartition();
+    RC loadNextPartition();
 };
 
 class Aggregate: public UnaryOperator

@@ -12,6 +12,7 @@ src/rm/makefile
 src/rm/*
 
 ixtest_p*
+qetest_p*
 makefile_new
 makefile_old
 autotest.sh

@@ -217,6 +217,11 @@ vector<Attribute> getRecordDescriptor(const string& tableName, int version,
 	else
 	{
 		TableRecord * table = catalog->getTableByName(tableName);
+        // FIXME: for Grace Hash Join partitions
+        if (table == NULL)
+        {
+            return recordDescriptor;
+        }
 		return table->getAttributes(version);
 	}
 }
